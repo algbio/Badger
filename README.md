@@ -37,17 +37,14 @@ aligned reads as a BAM or SAM file.
 <a name="sec2"></a>
 # Installation
 
-To obtain IsoQuant you can download repository and install requirements.
-Clone IsoQuant repository and switch to the latest release:
+To obtain Badger you can download repository and install requirements.
+Clone Badger repository and switch to the latest release:
 ```bash
-git clone https://github.com/ablab/IsoQuant.git
+git clone https://github.com/algbio/Badger.git
 cd Badger
 git checkout latest
 ```
-Install requirements:
-```bash
-pip install -r requirements.txt
-```
+
 
 <a name="sec3"></a>
 # Running Badger
