@@ -90,7 +90,9 @@ def main(args):
     out = args.output
     reads = pd.read_csv(args.reads, sep = "\t")
     ids = reads["#read_id"].tolist()
-    observed = reads["barcode"].tolist()
+    observed = reads["barcode"]
+    observed = observed.dropna()
+    observed = observed.tolist()
     read_assignment = []
     barcodes = reads["barcode"]
     barcodes = barcodes.dropna()
