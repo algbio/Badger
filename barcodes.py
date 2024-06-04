@@ -20,8 +20,8 @@ logger = logging.getLogger('BarcodeGraph')
 
 def parse_args(args):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--barcodes", "-b", help="tsv file containing the observed cell barcodes", ##this at some point I can just get from the barcode extraction output directly, but do that after thesis
-                        type = str, dest = "bar_file", required = True)
+    #parser.add_argument("--barcodes", "-b", help="tsv file containing the observed cell barcodes", ##this at some point I can just get from the barcode extraction output directly, but do that after thesis
+    #                    type = str, dest = "bar_file", required = True)
     parser.add_argument("--threshold", "-t", help = "Maximal accepted difference between barcodes",
                         type = int, dest = "threshold", default = 1) 
     parser.add_argument("--reads", "-r", help = "output file of barcode extraction algorithm",
@@ -64,10 +64,9 @@ def main(args):
     else:
         logger.error("Please specify the type of single cell data used. Options are 10x and Double.")
         exit(-3)
-    barcodes = pd.read_csv(args.bar_file, sep = "\t", header = None)
-    barcodes = barcodes.dropna()
-    barcodes = barcodes.iloc[:,0].tolist()
-    logger.info("Imported barcodes from file")#
+    # barcodes = pd.read_csv(args.bar_file, sep = "\t", header = None)
+    # barcodes = barcodes.dropna()
+    # barcodes = barcodes.iloc[:,0].tolist()
     true_barcodes = args.true_barcodes
     if true_barcodes:
         true_barcodes = pd.read_csv(true_barcodes, sep = "\t", header = None)
@@ -92,6 +91,11 @@ def main(args):
     ids = reads["#read_id"].tolist()
     observed = reads["barcode"].tolist()
     read_assignment = []
+    barcodes = reads["barcode"]
+    barcodes = barcodes.dropna()
+    barcodes = barcodes[barcodes != "*"]
+    barcodes = barcodes[barcodes != "barcode"]
+    barcodes = barcodes.tolist()
     for i in range(len(ids)):
         if ids[i] != "#read_id":
             di = ids[i]
@@ -100,6 +104,7 @@ def main(args):
                 if len(o) == bc_len + 1:
                     o = o[:-1]
                 read_assignment.append((di, o))
+    logger.info("Imported barcodes from file")
     
     logger.info("Initializing Graph")
     graph = BarcodeGraph(args.threshold)
@@ -109,7 +114,7 @@ def main(args):
     logger.info("Clustering done")
     
     
-    #graph.output_file(read_assignment, out, true_barcodes)
+    graph.output_file(read_assignment, out, true_barcodes)
     
     disconnected = len(graph.counts.keys()) - len(graph.edges.keys())
     print(disconnected)

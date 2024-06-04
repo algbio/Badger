@@ -15,6 +15,8 @@ import igraph as ig
 from collections import defaultdict
 import pandas as pd
 import logging
+import edlib
+from Levenshtein import distance
 
 from index import QGramIndex
 from common import get_score, dfs, dfs_without_recursion
@@ -41,7 +43,7 @@ class BarcodeGraph:
         index = QGramIndex(self.threshold, bc_len, 6)
         num = 0
         
-        logger.info("Using edit distance")
+        logger.info("Using edlib")
         
         for sequence in barcodes:
             if len(sequence) == bc_len + 1:
@@ -64,7 +66,16 @@ class BarcodeGraph:
                         else:
                             # test: min of three distances to possibly ignore last position for indels
                             #dist = editdistance.eval(sequence, seq)
-                            dist = min(editdistance.eval(sequence, seq), editdistance.eval(sequence[:-1],seq), editdistance.eval(sequence,seq[:-1]))
+                            #dist = min(editdistance.eval(sequence, seq), editdistance.eval(sequence[:-1],seq), editdistance.eval(sequence,seq[:-1]))
+                            #r1 = edlib.align(sequence, seq, mode = "SHW")
+                            #r2 = edlib.align(seq, sequence, mode = "SHW")
+                            #r = edlib.align(sequence, seq, mode = "NW", task = "path")
+                            #dist = r["editDistance"]
+                            #path = r["cigar"]
+                            #if path[-1] == 'I' or path[-1] == 'D':
+                            #    dist = dist -1
+                            #dist = min(r1["editDistance"], r2["editDistance"])
+                            dist = min(distance(sequence, seq, score_cutoff = 1), distance(sequence[:-1],seq, score_cutoff = 1), distance(sequence,seq[:-1], score_cutoff = 1))
                             #score = get_score(sequence, seq)
                             if dist <= self.threshold:
                             #if score >= 16*3 - 4: ## fully equal is 3*len, 2 indels would be -4
@@ -119,7 +130,6 @@ class BarcodeGraph:
         else:
             tbcs = bc_by_counts[:n_cells]
         
-        # do I iterate through true barcodes or components? Also how do I decide number of rounds for clustering? Do I just choose a cutoff or make it depend on the graph?
         for tbc in tbcs:
             tbc = self.numbered[tbc]
             self.clusters[tbc] = [tbc]
@@ -133,7 +143,6 @@ class BarcodeGraph:
                     node = self.clusters[center][n]
                     for neighbor in self.edges[node]:
                         if not self.clustered[neighbor]:
-                            #interesting: check that tbc is not the same before discarding any nodes, can be connected to the same tbc over two different other barcodes
                             self.clusters[center].append(neighbor)
                             self.clustering[neighbor] = (center,i)
                             self.clustered[neighbor] = True 
@@ -866,8 +875,8 @@ class BarcodeGraph:
                 component, visited = dfs_without_recursion(visited, node, [], self.edges)
                 components.append(component)
         
-        #assignments = self.assign_by_cluster()
-        assignments = self.get_assignments(true_barcodes, components)
+        assignments = self.assign_by_cluster()
+        #assignments = self.get_assignments(true_barcodes, components)
         read_ids = []
         results = []
         
