@@ -16,77 +16,297 @@ from collections import defaultdict
 import pandas as pd
 import logging
 import edlib
+import itertools
 from Levenshtein import distance
+from concurrent.futures import ProcessPoolExecutor
 
 from index import QGramIndex
-from common import get_score, dfs, dfs_without_recursion
+from common import get_score, dfs, dfs_without_recursion, rank, unrank
 
 logger = logging.getLogger("BarcodeGraph")
+
+READ_CHUNK_SIZE = 100000
+BC_CHUNK_SIZE = 10000
+
+class Chunk:
+    
+    index = QGramIndex(1, 16, 6)
+    counts = dict()
+    
+class Edgedist:
+    
+    edges = dict()
+    dists = dict()
 
 class BarcodeGraph:
     
     def __init__(self, threshold):
         
         self.threshold = threshold
-        self.counts = dict() # basically also a list of my nodes
+        self.counts = defaultdict(int) #list of my nodes with their counts #changing this to ranked instead of sequence as the key, kills all stats functions probably, need to look at them before I use them again
         self.edges = defaultdict(list) # idea: change list to set
-        self.dists = defaultdict(int) # I feel like I should have one dict that for every node contains all other nodes it is connected to and one dict having edges as keys and the distance of the endpoints as values
-        # might change as I move on but right now this feels correct
-        self.barcodes = defaultdict(str)
-        self.numbered = defaultdict(int)
+        self.dists = defaultdict(int)
+        #self.barcodes = defaultdict(str)
+        #self.numbered = defaultdict(int)
         self.clusters = defaultdict(list)
         self.clustering = dict()
-        self.clustered = []
+        self.clustered = defaultdict(bool)
+        self.index = None
     
-    def graph_construction(self, barcodes, bc_len):
-        #think about cutting one base off the right
-        index = QGramIndex(self.threshold, bc_len, 6)
-        num = 0
+    #not sure I love this here, think about moving that to a different place
+    def index_chunk(self, barcode_chunk, bc_len, num):
         
-        logger.info("Using edlib")
+        #print("Processing chunk" + str(num))
+        index = QGramIndex(self.threshold, bc_len, 6)
+        counts = dict() #wäre hier defaultdict sinnvoller?
+        # kann ich nicht theoretisch direkt mit self.counts arbeiten? Oder funktioniert nur daraus lesen aber nicht es verändern
+        # könnte mir vorstellen dass wenn ich es verändere nicht alle veränderungen übernommen werden
+        # aber lesen müsste eigentlich gehen und dann hat eh alles alle self.counts
+        
+        for sequence in barcode_chunk:
+            if len(sequence) == bc_len + 1:
+                sequence = sequence[:-1]
+            if len(sequence) == bc_len:
+                bc_rank = rank(sequence, bc_len)
+                if bc_rank in counts.keys():
+                    counts[bc_rank] += 1
+                else:
+                    # bc_rank = rank(sequence, bc_len) #TODO add unrank function
+                    counts[bc_rank] = 1
+                    index.add_to_index(sequence, bc_rank)
+        
+        chunk = Chunk()
+        chunk.index = index
+        chunk.counts = counts
+        
+        logger.info("Finished indexing chunk" + str(num))
+        return chunk
+        
+    def compare_chunk(self, bc_chunk, bc_len, num): # qär vielleicht sinnvoll zu self.index zu machen damit ich es nicht jedes mal weitergeben muss
+        # zu bc_chunk: gibt es irgendeine Option, dass ich das nicht machen muss? Die sind ja alle in self.counts, da kann ich drauf zugreifen
+        
+        edges = defaultdict(list)
+        dists = defaultdict(int)
+        
+        for bc_rank in bc_chunk:
+            
+            barcode = unrank(bc_rank, bc_len)
+        
+            closest = self.index.get_close(barcode, bc_rank)
+                
+            for seq_rank in closest: 
+                
+                if seq_rank > bc_rank:
+                    
+                    sequence = unrank(seq_rank, bc_len)
+                    
+                    if sequence == "" or sequence == barcode: 
+                        continue
+                    else: 
+                        
+                        dist = min(editdistance.eval(barcode, sequence), editdistance.eval(barcode[:-1],sequence), editdistance.eval(barcode,sequence[:-1]))
+                        
+                        if dist <= self.threshold:
+                            edges[bc_rank].append(seq_rank)
+                            edges[seq_rank].append(bc_rank)
+                            dists[(bc_rank, seq_rank)] = dist
+                            dists[(seq_rank, bc_rank)] = dist 
+                        
+        output = Edgedist()
+        output.edges = edges
+        output.dists = dists
+        
+        logger.info("Finished comparing chunk" + str(num))
+        
+        return output 
+        
+    def get_read_chunks(self, barcodes):
+        current_chunk = []
+        for r in barcodes:
+            current_chunk.append(r)
+            if len(current_chunk) >= READ_CHUNK_SIZE:
+                yield current_chunk
+                current_chunk = []
+        yield current_chunk
+        
+    def get_barcode_chunks(self, barcodes):
+        current_chunk = []
+        for bc in barcodes:
+            current_chunk.append(bc)
+            if len(current_chunk) >= BC_CHUNK_SIZE:
+                yield current_chunk
+                current_chunk = []
+        yield current_chunk
+        
+    def index_bc_in_parallel(self, barcodes, bc_len, threads):
+        
+        #self.index = QGramIndex(self.threshold, bc_len, 6)
+        barcode_chunks = self.get_read_chunks(barcodes)
+        
+        indexing_gen = (
+            self.index_chunk,
+            barcode_chunks,
+            itertools.repeat(bc_len),
+            itertools.count(start=0, step=1),
+        )
+        
+        with ProcessPoolExecutor(max_workers = threads) as proc:
+            chunks = proc.map(*indexing_gen, chunksize = 1)
+            
+        merged_index = self.index.index
+        
+        for chunk in chunks:
+            ix = chunk.index
+            i = ix.index
+            c = chunk.counts
+            
+            for j in range(len(i)):
+                kmer_dict = i[j]
+                for key in kmer_dict.keys():
+                    if key not in merged_index[j].keys():
+                        merged_index[j][key] = kmer_dict[key]
+            
+            for key in c.keys():
+                self.counts[key] += c[key]
+        
+        self.index.index = merged_index
+        
+        #return index
+    
+    def compare_in_parallel(self, bc_len, threads):
+        
+        barcodes = sorted(self.counts.keys())
+        
+        bc_chunks = self.get_barcode_chunks(barcodes)
+        
+        comparing_gen = (
+            self.compare_chunk,
+            bc_chunks,
+            itertools.repeat(bc_len),
+            itertools.count(start=0, step=1),
+        ) 
+        
+        with ProcessPoolExecutor(max_workers = threads) as proc:
+            chunks = proc.map(*comparing_gen, chunksize = 1)
+            
+        for chunk in chunks:
+            
+            edges = chunk.edges
+            dists = chunk.dists
+            
+            for key in edges.keys():
+                self.edges[key].extend(edges[key])
+            
+            for key in dists.keys():
+                self.dists[key] = dists[key]
+                
+        
+    def index_bc_single_thread(self, barcodes, bc_len):
         
         for sequence in barcodes:
             if len(sequence) == bc_len + 1:
                 sequence = sequence[:-1] 
             if len(sequence) == bc_len:
-                if sequence in self.counts.keys():
-                    self.counts[sequence] +=1
+                num = rank(sequence, bc_len)
+                if num in self.counts.keys():
+                    self.counts[num] +=1
                 else:
-                    self.barcodes[num] = sequence
-                    self.numbered[sequence] = num
-                    self.counts[sequence] = 1
-                    index.add_to_index(sequence, num)
-                    #for s in self.barcodes.keys():
-                    #    seq = self.barcodes[s]
-                    closest = index.get_close(sequence, num)
-                    for s in closest:
-                        seq = self.barcodes[s]
-                        if seq == "" or seq == sequence:
+                    #self.barcodes[num] = sequence
+                    #self.numbered[sequence] = num
+                    num = rank(sequence, bc_len)
+                    self.counts[num] = 1
+                    self.index.add_to_index(sequence, num)
+                    
+        #return index
+    
+    def graph_construction(self, barcodes, bc_len, threads): #could bc_len be a self.len or something like that?
+        self.index = QGramIndex(self.threshold, bc_len, 6)
+        num = 0
+        
+        if threads > 1:
+            
+            self.index_bc_in_parallel(barcodes, bc_len, threads)
+            
+            #bc_chunks # don't knoe how I get them yet
+            self.compare_in_parallel(bc_len, threads)
+            
+            
+            
+  
+        else: 
+            logger.info("Using edlib")
+            
+            self.index_bc_single_thread(barcodes, bc_len)
+            
+            for bc_rank in self.counts.keys():
+                # info: keys of counts are still the sequences but everywhere else I use the rank
+                # that means that I need to rank once in the beginning
+                # and then for everything that is in the closest set I need to unrank
+                # is this really more efficient than keeping them in a dictionary and looking them up?
+                # for multithreaded it probably is, and much more space efficient, but I am not sure about single threaded
+                
+                barcode = unrank(bc_rank, bc_len)
+                
+                # this is comparing to everything in the index so I do some comparisons multiple times! I might need to rewrite the "closest" function to only compare to lexicographically higher
+                # however that is only partly what I want for the parallel right? no I think maybe that still makes sense
+                # If I rewrite already closest might also make 
+                # I might actually have to use the other ranking function because then it should be lexicographically sorted in counts
+                # and then I just do only compare to things that are higher in the counts 
+                # but does that work with closest or do I then need to do it entirely different
+                # because in index it is first sorted by k-mer rank and then a dict
+                # and dicts are not sorted
+                closest = self.index.get_close(barcode, bc_rank)
+                
+                for seq_rank in closest:
+                    
+                    if seq_rank > bc_rank:
+                    
+                        sequence = unrank(seq_rank, bc_len)
+                        
+                        if sequence == "" or sequence == barcode: 
                             continue
-                        else:
-                            # test: min of three distances to possibly ignore last position for indels
-                            #dist = editdistance.eval(sequence, seq)
-                            #dist = min(editdistance.eval(sequence, seq), editdistance.eval(sequence[:-1],seq), editdistance.eval(sequence,seq[:-1]))
-                            #r1 = edlib.align(sequence, seq, mode = "SHW")
-                            #r2 = edlib.align(seq, sequence, mode = "SHW")
-                            #r = edlib.align(sequence, seq, mode = "NW", task = "path")
-                            #dist = r["editDistance"]
-                            #path = r["cigar"]
-                            #if path[-1] == 'I' or path[-1] == 'D':
-                            #    dist = dist -1
-                            #dist = min(r1["editDistance"], r2["editDistance"])
-                            dist = min(distance(sequence, seq, score_cutoff = 1), distance(sequence[:-1],seq, score_cutoff = 1), distance(sequence,seq[:-1], score_cutoff = 1))
-                            #score = get_score(sequence, seq)
+                        else: 
+                            
+                            dist = min(editdistance.eval(barcode, sequence), editdistance.eval(barcode[:-1],sequence), editdistance.eval(barcode,sequence[:-1]))
+                            
                             if dist <= self.threshold:
-                            #if score >= 16*3 - 4: ## fully equal is 3*len, 2 indels would be -4
-                                self.edges[num].append(s)
-                                self.edges[s].append(num)
-                                # #self.dists[(sequence,seq)] = dist # think if I should add both sides or one is enough
-                                self.dists[(num,s)] = dist 
-                                self.dists[(s,num)] = dist
-                    num += 1
-                    if num%500000 == 0:
-                        logger.info(f"processed {num} distinct barcodes")
+                                self.edges[bc_rank].append(seq_rank)
+                                self.edges[seq_rank].append(bc_rank)
+                                self.dists[(bc_rank, seq_rank)] = dist
+                                self.dists[(seq_rank, bc_rank)] = dist 
+                        #for s in self.barcodes.keys():
+                        #    seq = self.barcodes[s]
+                        # closest = index.get_close(sequence, num)
+                        # for s in closest:
+                            # seq = self.barcodes[s]
+                            # if seq == "" or seq == sequence:
+                                # continue
+                            # else:
+                                # # test: min of three distances to possibly ignore last position for indels
+                                # #dist = editdistance.eval(sequence, seq)
+                                # #dist = min(editdistance.eval(sequence, seq), editdistance.eval(sequence[:-1],seq), editdistance.eval(sequence,seq[:-1]))
+                                # #r1 = edlib.align(sequence, seq, mode = "SHW")
+                                # #r2 = edlib.align(seq, sequence, mode = "SHW")
+                                # #r = edlib.align(sequence, seq, mode = "NW", task = "path")
+                                # #dist = r["editDistance"]
+                                # #path = r["cigar"]
+                                # #if path[-1] == 'I' or path[-1] == 'D':
+                                # #    dist = dist -1
+                                # #dist = min(r1["editDistance"], r2["editDistance"])
+                                # dist = min(distance(sequence, seq, score_cutoff = 1), distance(sequence[:-1],seq, score_cutoff = 1), distance(sequence,seq[:-1], score_cutoff = 1))
+                                # #score = get_score(sequence, seq)
+                                # if dist <= self.threshold:
+                                # #if score >= 16*3 - 4: ## fully equal is 3*len, 2 indels would be -4
+                                    # self.edges[num].append(s)
+                                    # self.edges[s].append(num)
+                                    # # #self.dists[(sequence,seq)] = dist # think if I should add both sides or one is enough
+                                    # self.dists[(num,s)] = dist 
+                                    # self.dists[(s,num)] = dist
+                        # num += 1
+                        # if num%500000 == 0:
+                            # logger.info(f"processed {num} distinct barcodes")
+                            
+    
                 
     def visualize_graph(self):
         #G = nx.Graph()
@@ -107,12 +327,8 @@ class BarcodeGraph:
         layout = g.layout("fr")
         ig.plot(g, target = 'graph_dist_2.pdf', vertex_size = 1, layout = layout, edge_color = ['red', 'black'])
         
-    def cluster(self, true_barcodes, barcode_list, n_cells):
-        # might need another dict keeping cluster centre for every node
-        # what if in this dict I keep bc: (tbc, round in which it was added to the cluster)
-        # then when I want to add to a cluster I check whether it is already in a cluster and if so if it was added in an earlier round
-        # if it was added in a previous round leave it where it is, if it is the same round discard bc from cluster
-        self.clustered = [False for node in self.barcodes.keys()]
+    def cluster(self, true_barcodes, barcode_list, n_cells, bc_len):
+        #self.clustered = [False for node in self.counts.keys()]
         
         sorted_counts = dict(sorted(self.counts.items(), key=lambda item: item[1],reverse = True))
         bc_by_counts = list(sorted_counts.keys())
@@ -120,7 +336,7 @@ class BarcodeGraph:
         n = 0
         i = 0
         if true_barcodes:
-            tbcs = true_barcodes
+            tbcs = [rank(bc, bc_len) for bc in true_barcodes]
         elif barcode_list:
             while n < n_cells and i < len(bc_by_counts):
                 if bc_by_counts[i] in barcode_list:
@@ -131,7 +347,7 @@ class BarcodeGraph:
             tbcs = bc_by_counts[:n_cells]
         
         for tbc in tbcs:
-            tbc = self.numbered[tbc]
+            # tbc = rank(tbc, bc_len)
             self.clusters[tbc] = [tbc]
             self.clustering[tbc] = (tbc, 0)
             self.clustered[tbc] = True
@@ -150,12 +366,13 @@ class BarcodeGraph:
                             if self.clustering[neighbor][1] == i:
                                 self.clusters[self.clustering[neighbor][0]].remove(neighbor)
                                 self.clustering[neighbor] = (-1, -1)
-        
+                                
+    #move everything statistics related to a different file, instead of self then just give it the graph
+    #doesn't have to be in a class, more like common
     def graph_statistics(self, true_barcodes):
         components = []
         singletons = []
         lengths = []
-        # I want to try only visualizing large components
         false_components = []
         visited = [False for node in self.barcodes.keys()]
         both = 0
@@ -176,9 +393,6 @@ class BarcodeGraph:
                     singletons.append(component[0])
                     #print(component)
                 else:
-                    # I want to make statistics if they have one node that is connected to most others
-                    # maybe also check on the counts if one is seen more often
-                    # and when I find one that is either connected to most others or seen much more often compare it to the true barcodes
                     lengths.append(len(component))
                     #print("Component length:", len(component))
                     correct = 0
@@ -405,12 +619,12 @@ class BarcodeGraph:
         plt.title(("Degree of" +title +"barcodes"))
         plt.show()
         
-    def assign_by_cluster(self):
+    def assign_by_cluster(self, bc_len):
         observed_assignments = defaultdict(str)
-        for node in self.barcodes.keys():
+        for node in self.counts.keys():
             if self.clustered[node] and self.clustering[node][0] != -1:
-                bc = self.barcodes[node]
-                tbc = self.barcodes[self.clustering[node][0]]
+                bc = unrank(node, bc_len)
+                tbc = unrank(self.clustering[node][0], bc_len)
                 observed_assignments[bc] = tbc
         return observed_assignments
     
@@ -452,7 +666,6 @@ class BarcodeGraph:
                 #for tbc in true_assignment[bc]:
                     if tbc in self.numbered.keys():
                         correct_bc = self.numbered[tbc]
-                        # careful: I think the list might contain every correct barcode as many times as it is in the reads. This is technically what we want, just remember that
                         #if correct_bc in self.edges[node]:
                             #n_correct_assignments += 1
                             #n_correct_in_component += 1
@@ -475,7 +688,6 @@ class BarcodeGraph:
                                 # print("assigned barcode:", observed_assignments[bc], "count", self.counts[bc], "dist", editdistance.eval(bc, observed_assignments[bc]))
                                 # print("true barcode:", tbc, "count", true_assignment[bc][tbc], "dist", editdistance.eval(bc,tbc))
                                 #n_correct_in_component += 1
-                                # think about the case of equal edit distance
                                 for i in range(true_assignment[bc][tbc]):
                                     distances_in_component.append(editdistance.eval(bc, observed_assignments[bc]))
                                 correct_in_component.append(bc)
@@ -866,16 +1078,16 @@ class BarcodeGraph:
                             "barcode": results})
         res.to_csv('Human_R9_V5.3_tt_read_groups_tool.tsv', sep = '\t', index = False)
                 
-    def output_file(self, read_assignment, out, true_barcodes):
+    def output_file(self, read_assignment, out, true_barcodes, bc_len):
         
-        components = []
-        visited = [False for node in self.barcodes.keys()]
-        for node in self.barcodes.keys():
-            if not visited[node]:
-                component, visited = dfs_without_recursion(visited, node, [], self.edges)
-                components.append(component)
+        # components = []
+        # visited = [False for node in self.barcodes.keys()]
+        # for node in self.counts.keys():
+            # if not visited[node]:
+                # component, visited = dfs_without_recursion(visited, node, [], self.edges)
+                # components.append(component)
         
-        assignments = self.assign_by_cluster()
+        assignments = self.assign_by_cluster(bc_len)
         #assignments = self.get_assignments(true_barcodes, components)
         read_ids = []
         results = []

@@ -8,6 +8,36 @@
 
 from ssw import AlignmentMgr
 
+RANK = {'A' : 0,
+        'C' : 1,
+        'G' : 2,
+        'T' : 3}
+
+UNRANK = {0 : 'A',
+		  1 : 'C',
+		  2 : 'G',
+		  3 : 'T'}
+        
+def rank(seq, length):
+    rank = 0
+    for i in range(0,length):
+        rank += RANK[seq[i]]*(pow(4,i))
+    return rank
+    
+def unrank(rk, length):
+	
+	seq = ""
+	
+	for i in range(length):
+		
+		c = rk % 4 
+		
+		seq = seq + UNRANK[c]
+		rk = rk // 4
+	
+	return seq
+	
+
 def dfs(visited, node, component, edges):
     if not visited[node]:
         component.append(node)
