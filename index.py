@@ -125,7 +125,8 @@ class QGramIndex:
             kmers.append(kmer)
         for i in kmers:
             for j in self.index[i].keys():
-                distances[j] += self.index[i][j]
+                if j > number:
+                    distances[j] += self.index[i][j]
         results = []
         for bc in distances.keys():
             if distances[bc] >= self.threshold:

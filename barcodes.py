@@ -38,7 +38,8 @@ def parse_args(args):
                         type = int, default = 5000)
     parser.add_argument("--output", "-o", help = "File prefix for output files",
                         type = str, default = "OUT")
-    parser.add_argument("--stats", "-s", help = "if set, true barcode statistics are run instead of barcode calling.")
+    parser.add_argument("--stats", "-s", action='store_true', help = "if set, true barcode statistics are run instead of barcode calling.", default = False)
+    parser.add_argument("--threads", "-tr", dest = "threads", default = 1, type = int)
     return parser.parse_args(args)
     
 def set_logger(logger_instance):
@@ -111,15 +112,15 @@ def main(args):
     
     logger.info("Initializing Graph")
     graph = BarcodeGraph(args.threshold)
-    graph.graph_construction(barcodes, bc_len)
+    graph.graph_construction(barcodes, bc_len, args.threads)
     logger.info("Graph construction done")
     
     if not args.stats:
-        graph.cluster(true_barcodes, barcode_list, args.n_cells)
+        graph.cluster(true_barcodes, barcode_list, args.n_cells, bc_len)
         logger.info("Clustering done")
         
         
-        graph.output_file(read_assignment, out, true_barcodes)
+        graph.output_file(read_assignment, out, true_barcodes, bc_len)
     
     disconnected = len(graph.counts.keys()) - len(graph.edges.keys())
     print(disconnected)
@@ -127,9 +128,9 @@ def main(args):
     if args.stats:
         logger.info("Statistics being calculated")
         #graph.graph_statistics(true_barcodes)
-        graph.choose_true(true_barcodes, barcode_list, args.n_cells)
+        #graph.choose_true(true_barcodes, barcode_list, args.n_cells)
         #graph.visualize_graph()
-        graph.true_barcode_stats(true_barcodes)
+        #graph.true_barcode_stats(true_barcodes)
         #graph.large_component(true_barcodes)
         #graph.print_components(true_barcodes)
     
