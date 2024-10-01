@@ -339,7 +339,8 @@ class BarcodeGraph:
             tbcs = [rank(bc, bc_len) for bc in true_barcodes]
         elif barcode_list:
             while n < n_cells and i < len(bc_by_counts):
-                if bc_by_counts[i] in barcode_list:
+                #print(bc_by_counts[i])
+                if unrank(bc_by_counts[i], bc_len) in barcode_list:
                     tbcs.append(bc_by_counts[i])
                     n+=1
                 i+=1
