@@ -97,9 +97,10 @@ class BarcodeCaller:
 
     def _process_read(self, read_id, read_sequence):
         logger.debug("==== %s ====" % read_id)
-        barcode_result = self.barcode_detector.find_barcode_umi(read_id, read_sequence)
-        self.output_file.write("%s\n" % str(barcode_result))
-        self.read_stat.add_read(barcode_result)
+        barcode_results = self.barcode_detector.find_barcode_umi(read_id, read_sequence)
+        for barcode_result in barcode_results:
+            self.output_file.write("%s\n" % str(barcode_result))
+            self.read_stat.add_read(barcode_result)
 
     def process_chunk(self, read_chunk):
         for read_id, seq in read_chunk:
