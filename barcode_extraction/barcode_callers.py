@@ -489,7 +489,7 @@ class TenXBarcodeDetector:
             r1_occurrences = self.r1_indexer.get_occurrences(sequence[0:polyt_start + 1])
             r1_start, r1_end, r1_score = detect_exact_positions(sequence, 0, polyt_start + 1,
                                                                 self.r1_indexer.k, self.R1,
-                                                                r1_occurrences, min_score=13,
+                                                                r1_occurrences, min_score=11,
                                                                 end_delta=self.TERMINAL_MATCH_DELTA)
 
         logger.debug("R1 %s" % str(r1_start))
@@ -498,7 +498,7 @@ class TenXBarcodeDetector:
             r1_occurrences = self.r1_indexer.get_occurrences(sequence)
             r1_start, r1_end, r1_score = detect_exact_positions(sequence, 0, len(sequence),
                                                                 self.r1_indexer.k, self.R1,
-                                                                r1_occurrences, min_score=18,
+                                                                r1_occurrences, min_score=17,
                                                                 start_delta=self.STRICT_TERMINAL_MATCH_DELTA,
                                                                 end_delta=self.STRICT_TERMINAL_MATCH_DELTA)
 
@@ -519,7 +519,7 @@ class TenXBarcodeDetector:
                 polyt_start += search_start
 
         barcode_start = r1_end + 1
-        barcode_end = r1_end + self.BARCODE_LEN_10X + 1
+        barcode_end = r1_end + self.BARCODE_LEN_10X
         potential_barcode = sequence[barcode_start:barcode_end + 1]
         logger.debug("Barcode: %s" % (potential_barcode))
         return TenXBarcodeDetectionResult(read_id, potential_barcode, BC_score=0, polyT=polyt_start, r1=r1_end, r1_score=r1_score)
