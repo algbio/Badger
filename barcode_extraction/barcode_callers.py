@@ -526,9 +526,10 @@ class TenXBarcodeDetector:
         results = []
         for d in range(r1_end_delta + 1):
             barcode_start = r1_end + 1 - d
-            barcode_end = r1_end + self.BARCODE_LEN_10X
+            barcode_end = r1_end + self.BARCODE_LEN_10X - d
             potential_barcode = sequence[barcode_start:barcode_end + 1]
             logger.debug("Barcode: %s" % (potential_barcode))
+            assert len(potential_barcode) == self.BARCODE_LEN_10X
             results.append(TenXBarcodeDetectionResult(read_id, potential_barcode, BC_score=0, polyT=polyt_start, r1=r1_end, r1_score=r1_score))
         return results
     '''
