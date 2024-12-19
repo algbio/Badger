@@ -94,7 +94,7 @@ def main(args):
     observed = reads["barcode"]
     observed = observed.fillna('*')
     observed = observed.tolist()
-    read_assignment = []
+    read_assignment = defaultdict(list)
     barcodes = reads["barcode"]
     barcodes = barcodes.dropna()
     barcodes = barcodes[barcodes != "*"]
@@ -107,7 +107,7 @@ def main(args):
             if o != "barcode":
                 if len(o) == bc_len + 1:
                     o = o[:-1]
-                read_assignment.append((di, o))
+                read_assignment[di].append(o)
     logger.info("Imported barcodes from file")
     
     logger.info("Initializing Graph")
@@ -134,29 +134,19 @@ def main(args):
         #graph.large_component(true_barcodes)
         #graph.print_components(true_barcodes)
     
-    
+    # this is not yet changed to multiple barcodes
     if args.ground_truth is not None:
         truth = pd.read_csv(args.ground_truth, sep = "\t", header = None)
         #print(reads.iloc[:,0])
         ids = truth.iloc[1:,0].tolist()
-        observed = truth.iloc[1:,1].tolist()
-        read_assignment = []
-        true_assignment = defaultdict(dict)
-        seen = defaultdict(set)
+        true_assignment = defaultdict(str)
         for i in range(len(ids)): 
             if ids[i] != "#read_id":
                 true_bc = ids[i].split('_')[3]
                 if true_bc == "PAR":
                     true_bc = ids[i].split('_')[5]
-                observed_bc = observed[i]
-                if observed_bc != "barcode" and observed_bc != "*":
-                    read_assignment.append((ids[i], true_bc, observed_bc[:-1]))
-                    observed_bc = observed_bc[:-1]
-                    if true_bc in seen[observed_bc]:
-                        true_assignment[observed_bc][true_bc] += 1
-                    else:
-                        true_assignment[observed_bc][true_bc] = 1
-                        seen[observed_bc].add(true_bc)
+                true_assignment[ids[i]] = true_bc
+        graph.result_statistics(true_assignment)
         #for key in true_assignment.keys():
             #print(key, true_assignment[key])
         if true_barcodes:

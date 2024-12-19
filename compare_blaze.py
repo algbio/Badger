@@ -10,20 +10,27 @@ import pandas as pd
 import sys
 from collections import defaultdict
 from Bio import SeqIO
+import editdistance
+import matplotlib.pyplot as plt
 
-def compare_results(true_assignment, graph_assignment, blaze_assignment):
+def compare_results(true_assignment, graph_assignment, blaze_assignment, read_assignment):
         correct_graph = 0
         correct_blaze = 0
         wrong_graph = 0
         wrong_blaze = 0
         unassigned_blaze = 0
         unassigned_graph = 0
+        bl2e = []
+        ba2t = []
+        ba2e = []
+        extracted2true = []
         
         
         reads = true_assignment.keys()
         for read in reads:
             graph = graph_assignment[read]
             blaze = blaze_assignment[read]
+            extracted = read_assignment[read][:-1]
             t = true_assignment[read]
             if graph == "" or graph == "*":
                 unassigned_graph += 1
@@ -32,10 +39,23 @@ def compare_results(true_assignment, graph_assignment, blaze_assignment):
             else:
                 wrong_graph += 1
                 if t == blaze: 
-                    print("Badger wrong, Blaze correct")
+                    # print("Badger wrong, Blaze correct")
                     print("Read:", read)
                     print("Badger:", graph)
                     print("Blaze:", blaze)
+                    print("True:", t)
+                    print("extracted:", extracted)
+                    badger2true = editdistance.eval(graph, t)
+                    blaze2extracted = editdistance.eval(blaze, extracted)
+                    badger2extracted = editdistance.eval(graph, extracted)
+                    bl2e.append(blaze2extracted)
+                    ba2t.append(badger2true)
+                    ba2e.append(badger2extracted)
+                    extracted2true.append(editdistance.eval(extracted, t))
+                    print("Distance of Badger to true:", badger2true)
+                    print("Distance of Badger to extracted:", badger2extracted)
+                    print("Distance of Blaze to extracted:", blaze2extracted)
+                    print("Distance of true to extracted:", editdistance.eval(extracted, t))
             if blaze == "":
                 unassigned_blaze += 1
             elif t == blaze:
@@ -53,6 +73,19 @@ def compare_results(true_assignment, graph_assignment, blaze_assignment):
         print("correctly assigned:", correct_blaze)
         print("incorrectly assigned:", wrong_blaze)
         print("unassigned:", unassigned_blaze)
+        
+        plt.hist(ba2t)
+        plt.title("Distances of Badger assignment to truth, blaze is correct")
+        plt.show()
+        plt.hist(bl2e)
+        plt.title("Distances of Blaze assignment to extracted, blaze is correct")
+        plt.show()
+        plt.hist(ba2e)
+        plt.title("Distances of Badger assignment to extracted, blaze is correct")
+        plt.show()
+        plt.hist(extracted2true)
+        plt.title("Distances of truth to extracted, blaze is correct")
+        plt.show()
         
 def dict_from_blaze(blaze_data):
 	blaze_dict = defaultdict(str)
@@ -86,8 +119,12 @@ graph_dict = dict_from_graph(graph_df)
 
 blaze_dict = dict_from_blaze(blaze_data)
 
-reads = pd.read_csv(sys.argv[3], sep = "\t", header = None)
-ids = reads.iloc[1:,0].tolist()
+reads = pd.read_csv(sys.argv[3], sep = "\t")
+ids = reads.iloc[:,0].tolist()
+observed = reads["barcode"]
+observed = observed.fillna('*')
+observed = observed.tolist()
+read_assignment = defaultdict(str)
 true_assignment = defaultdict(str)
 for i in range(len(ids)): 
     if ids[i] != "#read_id":
@@ -95,5 +132,6 @@ for i in range(len(ids)):
         if true_bc == "PAR":
             true_bc = ids[i].split('_')[5]
         true_assignment[ids[i][:-30]] = true_bc
+        read_assignment[ids[i][:-30]] = observed[i]
 
-compare_results(true_assignment, graph_dict, blaze_dict)
+compare_results(true_assignment, graph_dict, blaze_dict, read_assignment)

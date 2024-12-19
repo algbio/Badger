@@ -51,6 +51,7 @@ class BarcodeGraph:
         self.clusters = defaultdict(list)
         self.clustering = dict()
         self.clustered = defaultdict(bool)
+        self.assignment = None
         self.index = None
     
     #not sure I love this here, think about moving that to a different place
@@ -1093,22 +1094,27 @@ class BarcodeGraph:
         read_ids = []
         results = []
         
-        for read in read_assignment:
-            observed_bc = read[1]
-            assigned_bc = "*"
-            if observed_bc != "*":
-                assigned_bc = assignments[observed_bc]
-                if assigned_bc == "":
-                    assigned_bc = "*"
+        for read in read_assignment.keys():
+            observed_bcs = read_assignment[read]
+            assigned_bcs = []
+            for observed_bc in observed_bcs:
+                assigned_bc = "*"
+                if observed_bc != "*":
+                    assigned_bc = assignments[observed_bc]
+                    if assigned_bc == "":
+                        assigned_bc = "*"
+                assigned_bcs.append(assigned_bc)
                     
-            read_ids.append(read[0])
-            results.append(assigned_bc)
+            read_ids.append(read)
+            results.append(set(assigned_bcs))
         
         out_file = out + "_output_file.tsv"
 
         res = pd.DataFrame({"readID": read_ids,
                             "barcode": results})
         res.to_csv(out_file, sep = '\t', index = False)
+        
+        self.assignment = dict(zip(read_ids, results))
                 
 ## /abga/work/rebpfeil/single_cell/read_group_files/
 
@@ -1174,4 +1180,46 @@ class BarcodeGraph:
                 plt.figure()
                 nx.draw(G, node_size = 50, node_color = color_map_3)
                 plt.show()
-    
+                
+    def result_statistics(self, true_assignment):
+        
+        lengths = []
+        wrong = 0
+        correct = 0
+        unassigned = 0
+        
+        for read in true_assignment.keys():
+            assigned = list(self.assignment[read])
+            lengths.append(len(assigned))
+            t = true_assignment[read]
+            if len(assigned) == 1:
+                if assigned[0] == "*":
+                    unassigned += 1
+                elif t == assigned[0]:
+                    correct += 1
+                else:
+                    wrong += 1
+            else:
+                unass = True
+                corr = False
+                for a in assigned:
+                    if a != "*":
+                        unass = False
+                    if a == t:
+                        corr = True
+                if corr:
+                    correct += 1
+                elif unass:
+                    unassigned += 1
+                else:
+                    wrong += 1
+        
+        plt.hist(lengths)
+        plt.title("Number of barcodes (including *) in the assignment")
+        plt.yscale("log")
+        plt.show()
+                        
+        print("assignment statistics:")
+        print("correctly assigned:", correct)
+        print("incorrectly assigned:", wrong)
+        print("unassigned:", unassigned)
