@@ -54,21 +54,21 @@ def compare_results(true_assignment, graph_assignment, blaze_assignment):
         print("incorrectly assigned:", wrong_blaze)
         print("unassigned:", unassigned_blaze)
         
-def dict_from_blaze(blaze_data):
-	blaze_dict = defaultdict(str)
-	
-	for read in blaze_data:
-		rid = read.id
-		r = rid.split('_')
-		bc = r[0]
-		#print(bc)
-		rid = rid.split('#')
-		readid = rid[1][:-32]
-		#print(readid)
-		
-		blaze_dict[readid] = bc
-	
-	return blaze_dict
+    def dict_from_blaze(blaze_data):
+    blaze_dict = defaultdict(str)
+    
+    for read in blaze_data:
+        rid = read.id
+        r = rid.split('_')
+        bc = r[0]
+        #print(bc)
+        rid = rid.split('#')
+        readid = rid[1][:-32]
+        #print(readid)
+        
+        blaze_dict[readid] = bc
+    
+    return blaze_dict
 
 def dict_from_graph(graph_df):
     graph_dict = defaultdict(str)

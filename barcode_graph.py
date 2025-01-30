@@ -637,8 +637,8 @@ class BarcodeGraph:
             if not visited[node]:
                 component, visited = dfs_without_recursion(visited, node, [], self.edges)
                 components.append(component)
-        observed_assignments = self.get_assignments(true_barcodes, components)
-        #observed_assignments = self.assign_by_cluster()
+        #observed_assignments = self.get_assignments(true_barcodes, components)
+        observed_assignments = self.assign_by_cluster()
         n_correct_assignments = 0
         n_correct_in_component = 0
         n_incorrect = 0
