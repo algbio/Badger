@@ -447,11 +447,11 @@ class TenXBarcodeDetector:
     UMI_LEN_10X = 12
 
     UMI_LEN_DELTA = 2
-    TERMINAL_MATCH_DELTA = 2
+    TERMINAL_MATCH_DELTA = 4
     STRICT_TERMINAL_MATCH_DELTA = 1
 
     def __init__(self, barcode_list, umi_list=None):
-        self.r1_indexer = KmerIndexer([TenXBarcodeDetector.R1], kmer_size=7)
+        self.r1_indexer = KmerIndexer([TenXBarcodeDetector.R1], kmer_size=6)
         self.barcode_indexer = KmerIndexer(barcode_list, kmer_size=6)
         self.umi_set = None
         if umi_list:
@@ -489,7 +489,7 @@ class TenXBarcodeDetector:
             r1_occurrences = self.r1_indexer.get_occurrences(sequence[0:polyt_start + 1])
             r1_start, r1_end, r1_score = detect_exact_positions(sequence, 0, polyt_start + 1,
                                                                 self.r1_indexer.k, self.R1,
-                                                                r1_occurrences, min_score=11,
+                                                                r1_occurrences, min_score=9,
                                                                 end_delta=self.TERMINAL_MATCH_DELTA)
 
         logger.debug("R1 %s" % str(r1_start))
@@ -506,7 +506,7 @@ class TenXBarcodeDetector:
             return TenXBarcodeDetectionResult(read_id, polyT=polyt_start)
         logger.debug("LINKER: %d-%d" % (r1_start, r1_end))
 
-        if polyt_start != -1 and polyt_start - r1_end < self.BARCODE_LEN_10X + self.UMI_LEN_10X - 4:
+        if polyt_start != -1 and polyt_start - r1_end < self.BARCODE_LEN_10X:
             return TenXBarcodeDetectionResult(read_id, polyT=polyt_start)
 
         if polyt_start == -1 or polyt_start - r1_end > self.BARCODE_LEN_10X + self.UMI_LEN_10X + 10:
