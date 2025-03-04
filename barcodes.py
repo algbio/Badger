@@ -120,10 +120,10 @@ def main(args):
         logger.info("Clustering done")
         
         
-        graph.output_file(read_assignment, out, true_barcodes, bc_len)
+        #graph.output_file(read_assignment, out, true_barcodes, bc_len)
     
     disconnected = len(graph.counts.keys()) - len(graph.edges.keys())
-    print(disconnected)
+    #print(disconnected)
             
     if args.stats:
         logger.info("Statistics being calculated")

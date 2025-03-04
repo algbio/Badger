@@ -354,6 +354,7 @@ class BarcodeGraph:
             self.clustering[tbc] = (tbc, 0)
             self.clustered[tbc] = True
             
+        si = 0
         for i in range(1,3):
             print(i)
             for center in self.clusters.keys():
@@ -366,8 +367,13 @@ class BarcodeGraph:
                             self.clustered[neighbor] = True 
                         elif self.clustering[neighbor][0] != center and self.clustering[neighbor][0] != -1:
                             if self.clustering[neighbor][1] == i:
+                                #print("extracted barcode: ", unrank(neighbor, bc_len))
+                                #print("cluster 1:  ", unrank(center, bc_len))
+                                #print("cluster 2: ", unrank(self.clustering[neighbor][0], bc_len))
+                                si += self.counts[neighbor]
                                 self.clusters[self.clustering[neighbor][0]].remove(neighbor)
                                 self.clustering[neighbor] = (-1, -1)
+        print("number of times a read could be assigned to two (or more) barcodes in the same iteration: ", si)
                                 
     #move everything statistics related to a different file, instead of self then just give it the graph
     #doesn't have to be in a class, more like common
@@ -1187,6 +1193,7 @@ class BarcodeGraph:
         wrong = 0
         correct = 0
         unassigned = 0
+        unextracted = 0
         
         for read in true_assignment.keys():
             assigned = list(self.assignment[read])
@@ -1195,6 +1202,8 @@ class BarcodeGraph:
             if len(assigned) == 1:
                 if assigned[0] == "*":
                     unassigned += 1
+                    if correct == "*":
+                        unextracted+=1
                 elif t == assigned[0]:
                     correct += 1
                 else:
