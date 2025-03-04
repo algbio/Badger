@@ -15,6 +15,7 @@ from io import StringIO
 from traceback import print_exc
 
 from barcode_graph import BarcodeGraph
+import statistics
 
 logger = logging.getLogger('BarcodeGraph')
 
@@ -127,12 +128,12 @@ def main(args):
             
     if args.stats:
         logger.info("Statistics being calculated")
-        #graph.graph_statistics(true_barcodes)
-        #graph.choose_true(true_barcodes, barcode_list, args.n_cells)
-        #graph.visualize_graph()
-        #graph.true_barcode_stats(true_barcodes)
-        #graph.large_component(true_barcodes)
-        #graph.print_components(true_barcodes)
+        #statistics.graph_statistics(graph, true_barcodes)
+        #statistics.choose_true(graph, true_barcodes, barcode_list, args.n_cells)
+        #statistics.visualize_graph(graph)
+        #statistics.true_barcode_stats(graph, true_barcodes)
+        #statistics.large_component(graph, true_barcodes)
+        #statistics.print_components(graph, true_barcodes)
     
     
     if args.ground_truth is not None:
