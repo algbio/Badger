@@ -440,7 +440,7 @@ class BarcodeGraph:
         return assignments
             
                 
-    def output_file(self, read_assignment, out, true_barcodes, bc_len):
+    def output_file(self, read_assignment, out, true_barcodes, bc_len, post):
         
         # components = []
         # visited = [False for node in self.barcodes.keys()]
@@ -453,7 +453,8 @@ class BarcodeGraph:
         #assignments = self.get_assignments(true_barcodes, components)
         read_ids = []
         results = []
-        assignments = self.postprocessing(assignments, bc_len)
+        if post:
+            assignments = self.postprocessing(assignments, bc_len)
         for read in read_assignment:
             observed_bc = read[1]
             assigned_bc = "*"

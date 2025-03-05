@@ -41,6 +41,7 @@ def parse_args(args):
                         type = str, default = "OUT")
     parser.add_argument("--stats", "-s", action='store_true', help = "if set, true barcode statistics are run instead of barcode calling.", default = False)
     parser.add_argument("--threads", "-tr", dest = "threads", default = 1, type = int)
+    parser.add_argument("--high_sens", "-hs", action='store_true', help = "if set, Badger is run in high sensitivity mode. This increases recall but decreases precision", default = False)
     return parser.parse_args(args)
     
 def set_logger(logger_instance):
@@ -121,7 +122,7 @@ def main(args):
         logger.info("Clustering done")
         
         
-        graph.output_file(read_assignment, out, true_barcodes, bc_len)
+        graph.output_file(read_assignment, out, true_barcodes, bc_len, args.high_sens)
     
     disconnected = len(graph.counts.keys()) - len(graph.edges.keys())
     print(disconnected)
