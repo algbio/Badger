@@ -38,12 +38,12 @@ def visualize_graph(graph):
     layout = g.layout("fr")
     ig.plot(g, target = 'graph_dist_2.pdf', vertex_size = 1, layout = layout, edge_color = ['red', 'black'])
     
-def graph_statistics(graph, true_barcodes):
+def graph_statistics(graph, true_barcodes, bc_len):
     components = []
     singletons = []
     lengths = []
     false_components = []
-    visited = [False for node in graph.barcodes.keys()]
+    visited = [False for node in graph.counts.keys()]
     both = 0
     degree_better = 0
     count_better = 0
@@ -55,7 +55,7 @@ def graph_statistics(graph, true_barcodes):
     best_is_max = 0
     n = 0
     correct_in_component = []
-    for node in graph.barcodes.keys():
+    for node in graph.counts.keys():
         if not visited[node]:
             component, visited = dfs_without_recursion(visited, node, [], graph.edges)
             if len(component) == 1:
@@ -91,11 +91,11 @@ def graph_statistics(graph, true_barcodes):
                     if len(graph.edges[node]) > max_degree:
                         max_degree = len(graph.edges[node])
                         max_degree_node = node
-                    if graph.counts[graph.barcodes[node]] > max_count:
-                        max_count = graph.counts[graph.barcodes[node]]
+                    if graph.counts[node] > max_count:
+                        max_count = graph.counts[node]
                         max_count_node = node
                     for bc in true_barcodes:
-                        dist = editdistance.eval(graph.barcodes[node], bc)
+                        dist = editdistance.eval(unrank(node, bc_len), bc)
                         if dist < min_dist_n:
                             min_dist_n = dist
                             min_node = node
@@ -120,8 +120,8 @@ def graph_statistics(graph, true_barcodes):
                 min_dist_c = 32
                 min_dist_d = 32
                 for bc in true_barcodes:
-                    dist_c = editdistance.eval(graph.barcodes[max_count_node], bc)
-                    dist_d = editdistance.eval(graph.barcodes[max_degree_node], bc)
+                    dist_c = editdistance.eval(unrank(max_count_node, bc_len), bc)
+                    dist_d = editdistance.eval(unrank(max_degree_node, bc_len), bc)
                     if dist_c < min_dist_c:
                         min_dist_c = dist_c
                         min_bc_c = bc
@@ -173,7 +173,7 @@ def graph_statistics(graph, true_barcodes):
             components.append(component)
     single_counts = []
     for node in singletons:
-        single_counts.append(graph.counts[graph.barcodes[node]])
+        single_counts.append(graph.counts[node])
     print("number of components:", len(components))
     print("number of singletons", len(singletons))
     print("maximal component size", max(lengths))
@@ -230,7 +230,7 @@ def graph_statistics(graph, true_barcodes):
     plt.show()
     # graph.closest_true(singletons, true_barcodes)
     
-def closest_true(graph, singletons, true_barcodes):
+def closest_true(graph, singletons, true_barcodes, bc_len):
     true_barcodes = set(true_barcodes)
     closest = []
     dists = []
@@ -239,13 +239,13 @@ def closest_true(graph, singletons, true_barcodes):
         min_bc = -1
         min_dist = 32
         for bc in true_barcodes:
-            dist = editdistance.eval(graph.barcodes[node], bc)
+            dist = editdistance.eval(unrank(node, bc_len), bc)
             if dist < min_dist:
                 min_bc = bc
                 min_dist = dist
         closest.append(min_bc)
         dists.append(min_dist)
-        seqs.append(graph.barcodes[node])
+        seqs.append(unrank(node, bc_len))
         if min_bc == -1:
             print("nothing remotely close")
     df = pd.DataFrame(list(zip(seqs, closest, dists)), columns = ['singletons', 'closest true barcode', 'distance'])
@@ -255,12 +255,12 @@ def closest_true(graph, singletons, true_barcodes):
     plt.title("Minimum distance of each singleton")
     plt.show()
 
-def assigned_stats(graph, barcodes, title):
+def assigned_stats(graph, barcodes, title, bc_len):
     counts = []
     degree = []
     for bc in barcodes:
-        node = graph.numbered[bc]
-        counts.append(graph.counts[bc])
+        node = rank(bc, bc_len)
+        counts.append(graph.counts[node])
         degree.append(len(graph.edges[node]))
     plt.hist(counts, bins = 30)
     plt.title(("Counts of" +title +"barcodes"))
@@ -269,10 +269,10 @@ def assigned_stats(graph, barcodes, title):
     plt.title(("Degree of" +title +"barcodes"))
     plt.show()
     
-def compare_results(graph, true_assignment, true_barcodes):
+def compare_results(graph, true_assignment, true_barcodes, bc_len):
     components = []
-    visited = [False for node in graph.barcodes.keys()]
-    for node in graph.barcodes.keys():
+    visited = [False for node in graph.counts.keys()]
+    for node in graph.counts.keys():
         #print(node)
         if not visited[node]:
             component, visited = dfs_without_recursion(visited, node, [], graph.edges)
@@ -299,14 +299,14 @@ def compare_results(graph, true_assignment, true_barcodes):
         #if len(component) > 10000:
         observed_true = 0
         for node in component:
-            if graph.barcodes[node] in true_barcodes:
+            if unrank(node, bc_len) in true_barcodes:
                 observed_true += 1
         for node in component:
-            bc = graph.barcodes[node]
+            bc = unrank(node, bc_len)
             for tbc in true_assignment[bc].keys():
             #for tbc in true_assignment[bc]:
-                if tbc in graph.numbered.keys():
-                    correct_bc = graph.numbered[tbc]
+                if rank(tbc, bc_len) in graph.counts.keys():
+                    correct_bc = rank(tbc, bc_len)
                     #if correct_bc in graph.edges[node]:
                         #n_correct_assignments += 1
                         #n_correct_in_component += 1
@@ -337,8 +337,8 @@ def compare_results(graph, true_assignment, true_barcodes):
                             #print("distance of bc and observed assignment:" , editdistance.eval(bc, observed_assignments[bc]))
                     else:
                         #print("Correct barcode in different component")
-                        #print("Barcode:", graph.barcodes[node], "count:", graph.counts[graph.barcodes[node]])
-                        #print("True assignment:", true_assignment[graph.barcodes[node]])
+                        #print("Barcode:", unrank(node, bc_len), "count:", graph.counts[graph.barcodes[node]])
+                        #print("True assignment:", true_assignment[unrank(node, bc_len)])
                         #print("Size of the component:", len(component))
                         #print("Number of true barcodes in the component:", observed_true)
                         if observed_assignments[bc] == "":
@@ -398,18 +398,19 @@ def compare_results(graph, true_assignment, true_barcodes):
                 # print("Barcode:", node, "count:", graph.counts[graph.barcodes[node]])
                 # print("True assignment:", correct_barcode, true_assignment[graph.barcodes[node]])
                 
-def compare_to_cluster(graph, true_barcodes, true_assignment):
+def compare_to_cluster(graph, true_barcodes, true_assignment, bc_len):
     
     components = []
-    visited = [False for node in graph.barcodes.keys()]
-    for node in graph.barcodes.keys():
+    visited = [False for node in graph.counts.keys()]
+    for node in graph.counts.keys():
         #print(node)
         if not visited[node]:
             component, visited = dfs_without_recursion(visited, node, [], graph.edges)
             components.append(component)
     cluster_assignment = graph.assign_by_cluster()
     assignment = graph.get_assignments(true_barcodes, components)
-    for bc in graph.numbered.keys():
+    for node in graph.counts.keys():
+        bc = unrank(node, bc_len)
         if cluster_assignment[bc] != assignment[bc]:
             print("barcode:", bc)
             print("cluster assignment:", cluster_assignment[bc], "dist:", editdistance.eval(bc, cluster_assignment[bc]))
@@ -419,7 +420,7 @@ def compare_to_cluster(graph, true_barcodes, true_assignment):
             if assignment[bc] in true_assignment[bc].keys():
                 print("Original assignment correct")
                 
-def true_barcode_stats(graph, true_barcodes):
+def true_barcode_stats(graph, true_barcodes, bc_len):
     counts = []
     f_counts = []
     degree = []
@@ -427,8 +428,8 @@ def true_barcode_stats(graph, true_barcodes):
     component_size = []
     f_component_size = []
     components = []
-    visited = [False for node in graph.barcodes.keys()]
-    for node in graph.barcodes.keys():
+    visited = [False for node in graph.counts.keys()]
+    for node in graph.counts.keys():
         if not visited[node]:
             component, visited = dfs_without_recursion(visited, node, [], graph.edges)
             components.append(component)
@@ -436,19 +437,19 @@ def true_barcode_stats(graph, true_barcodes):
     for component in components:
         #if len(component) < 30000:
         for node in component:
-            if graph.barcodes[node] in true_barcodes:
+            if unrank(node, bc_len) in true_barcodes:
                 component_size.append(len(component))
-                counts.append(graph.counts[graph.barcodes[node]])
+                counts.append(graph.counts[node])
                 degree.append(len(graph.edges[node]))
             else:
                 f_component_size.append(len(component))
-                f_counts.append(graph.counts[graph.barcodes[node]])
+                f_counts.append(graph.counts[node])
                 f_degree.append(len(graph.edges[node]))
-                if graph.counts[graph.barcodes[node]] > 50:
-                    print(graph.barcodes[node], graph.counts[graph.barcodes[node]])
+                if graph.counts[node] > 50:
+                    print(unrank(node, bc_len), graph.counts[node])
     #for bc in true_barcodes:
-    #    counts.append(graph.counts[bc])
-    #    tbc = graph.numbered[bc]
+    #    tbc = rank(bc, bc_len)
+    #    counts.append(graph.counts[tbc])
     #    degree.append(len(graph.edges[tbc]))
     print("After")
     print("Minumum count:", min(counts))
@@ -518,22 +519,22 @@ def true_barcode_stats(graph, true_barcodes):
     plt.savefig("degrees_t_P7.10p.png")
     #plt.show()
     
-def components_without_true(graph, true_barcodes, true_assignment):
+def components_without_true(graph, true_barcodes, true_assignment, bc_len):
     sizes = []
     dists = []
     components = []
     num = 0
     comp = 0
     bc_to_comp = {}
-    visited = [False for node in graph.barcodes.keys()]
-    for node in graph.barcodes.keys():
+    visited = [False for node in graph.counts.keys()]
+    for node in graph.counts.keys():
         if not visited[node]:
             component, visited = dfs_without_recursion(visited, node, [], graph.edges)
             components.append(component)
             min_dist = 32
             min_bc = -1
             for node in component:
-                bc = graph.barcodes[node]
+                bc = unrank(node, bc_len)
                 for tbc in true_barcodes:
                     dist = editdistance.eval(bc,tbc)
                     if dist < min_dist:
@@ -547,7 +548,7 @@ def components_without_true(graph, true_barcodes, true_assignment):
         min_bc = -1
         actual_bc = []
         for node in component:
-            bc = graph.barcodes[node]
+            bc = unrank(node, bc_len)
             for tbc in true_assignment[bc].keys():
                 actual_bc.append(tbc)
             for tbc in true_barcodes:
@@ -586,12 +587,12 @@ def components_without_true(graph, true_barcodes, true_assignment):
     # plt.title("Distances to closest true barcode from components without")
     # plt.show()
     
-def large_component(graph, true_barcodes):
+def large_component(graph, true_barcodes, bc_len):
     components = []
-    visited = [False for node in graph.barcodes.keys()]
+    visited = [False for node in graph.counts.keys()]
     subgraphs = []
     l_component = []
-    for node in graph.barcodes.keys():
+    for node in graph.counts.keys():
         #print(node)
         if not visited[node]:
             component, visited = dfs_without_recursion(visited, node, [], graph.edges)
@@ -602,7 +603,7 @@ def large_component(graph, true_barcodes):
     visited = [False for node in graph.barcodes.keys()]
     #print(l_component)
     for tbc in true_barcodes: 
-        tbc = graph.numbered[tbc]
+        tbc = rank(node, bc_len)
         if tbc in l_component:
             print("here")
             subgraph = []
@@ -642,7 +643,7 @@ def large_component(graph, true_barcodes):
                 nx.draw(G, node_size = 50, node_color = color_map)
                 plt.show()
                 
-def choose_true(graph, true_barcodes, barcode_list, n_cells):
+def choose_true(graph, true_barcodes, barcode_list, n_cells, bc_len):
     sorted_counts = dict(sorted(graph.counts.items(), key=lambda item: item[1],reverse = True))
     bc_by_counts = list(sorted_counts.keys())
     maybe_true = []
@@ -657,25 +658,26 @@ def choose_true(graph, true_barcodes, barcode_list, n_cells):
     else:
         maybe_true = bc_by_counts[:n_cells]
     wrong = 0
-    for bc in true_barcodes:
+    for tbc in true_barcodes:
+        bc = unrank(tbc, bc_len)
         if not bc in barcode_list:
             print("True barcode not in barcode list")
             print(bc)
         if bc not in maybe_true:
             print("True barcode not included")
-            print(bc, graph.counts[bc])
+            print(bc, graph.counts[tbc])
             wrong += 1
     for bc in maybe_true:
         if bc not in true_barcodes:
             print("Barcode included but not true")
-            print(bc, graph.counts[bc])
+            print(bc, graph.counts[tbc])
             wrong += 1
     print(wrong)
     
 def print_components(graph, true_barcodes):
     components = []
-    visited = [False for node in graph.barcodes.keys()]
-    for node in graph.barcodes.keys():
+    visited = [False for node in graph.counts.keys()]
+    for node in graph.counts.keys():
         #print(node)
         if not visited[node]:
             component, visited = dfs_without_recursion(visited, node, [], graph.edges)
