@@ -425,28 +425,38 @@ def true_barcode_stats(graph, true_barcodes, bc_len):
     f_counts = []
     degree = []
     f_degree = []
-    component_size = []
-    f_component_size = []
-    components = []
-    visited = [False for node in graph.counts.keys()]
     for node in graph.counts.keys():
-        if not visited[node]:
-            component, visited = dfs_without_recursion(visited, node, [], graph.edges)
-            components.append(component)
-    print("Before")
-    for component in components:
-        #if len(component) < 30000:
-        for node in component:
-            if unrank(node, bc_len) in true_barcodes:
-                component_size.append(len(component))
-                counts.append(graph.counts[node])
-                degree.append(len(graph.edges[node]))
-            else:
-                f_component_size.append(len(component))
-                f_counts.append(graph.counts[node])
-                f_degree.append(len(graph.edges[node]))
-                if graph.counts[node] > 50:
-                    print(unrank(node, bc_len), graph.counts[node])
+        if unrank(node, bc_len) in true_barcodes:
+            counts.append(graph.counts[node])
+            degree.append(len(graph.edges[node]))
+        else:
+            f_counts.append(graph.counts[node])
+            f_degree.append(len(graph.edges[node]))
+    # component_size = []
+    # f_component_size = []
+    # components = []
+    # visited = [False for node in graph.counts.keys()]
+    # x = 0
+    # for node in graph.counts.keys():
+        # print(x)
+        # x += 1
+        # if not visited[node]:
+            # component, visited = dfs_without_recursion(visited, node, [], graph.edges)
+            # components.append(component)
+    # print("Before")
+    # for component in components:
+        # #if len(component) < 30000:
+        # for node in component:
+            # if unrank(node, bc_len) in true_barcodes:
+                # component_size.append(len(component))
+                # counts.append(graph.counts[node])
+                # degree.append(len(graph.edges[node]))
+            # else:
+                # f_component_size.append(len(component))
+                # f_counts.append(graph.counts[node])
+                # f_degree.append(len(graph.edges[node]))
+                # if graph.counts[node] > 50:
+                    # print(unrank(node, bc_len), graph.counts[node])
     #for bc in true_barcodes:
     #    tbc = rank(bc, bc_len)
     #    counts.append(graph.counts[tbc])
@@ -454,69 +464,76 @@ def true_barcode_stats(graph, true_barcodes, bc_len):
     print("After")
     print("Minumum count:", min(counts))
     print("Minimum degree:", min(degree))
+    all_counts = counts.copy()
+    all_counts.extend(f_counts)
     plt.figure()
-    plt.hist(counts, bins = 75, log = True)
-    plt.hist(f_counts, bins = 14, color = "red", log = True)
+    plt.hist(all_counts, bins = 75, log = True)
+    plt.title("Counts of all barcodes")
+    plt.savefig("counts_NewStereoQ.png")
+    #plt.show()
+    plt.figure()
+    plt.hist(counts, bins = 100, log = True)
+    plt.hist(f_counts, bins = 5, color = "red", log = True)
     plt.title("Counts of all barcodes, true blue, other red")
-    plt.savefig("counts_all_P7.10p.png")
+    plt.savefig("counts_all_NewStereoQ.png")
     #plt.show()
     plt.figure()
     plt.hist(degree, bins = 25)
     plt.hist(f_degree, bins = 25, color = "red", log = True)
     plt.title("Degrees of all barcodes, true blue, other red")
-    plt.savefig("degrees_all_P7.10p.png")
+    plt.savefig("degrees_all_NewStereoQ.png")
     #plt.show()
-    plt.figure()
-    plt.scatter(component_size, counts, alpha = 0.2)
-    plt.scatter(f_component_size, f_counts, c = "red", alpha = 0.2)
-    plt.title("Counts of barcodes by component size, true blue, other red")
-    plt.savefig("counts_all_by_size_P7.10p.png")
-    #plt.show()
-    plt.figure()
-    plt.scatter(component_size, degree, alpha = 0.2)
-    plt.scatter(f_component_size, f_degree, c = "red", alpha = 0.2)
-    plt.title("Degrees of barcodes by component size, true blue, other red")
-    plt.savefig("degrees_all_by_size_P7.10p.png")
-    #plt.show()
-    plt.figure()
-    plt.scatter(f_component_size, f_degree, c = "red")
-    plt.title("Degrees of not true barcodes by component size")
-    plt.savefig("degrees_nt_by_size_P7.10p.png")
-    #plt.show()
-    plt.figure()
-    plt.scatter(f_component_size, f_counts, c = "red")
-    plt.title("Counts of not true barcodes by component size")
-    plt.savefig("counts_nt_by_size_P7.10p.png")
-    #plt.show()
+    # plt.figure()
+    # plt.scatter(component_size, counts, alpha = 0.2)
+    # plt.scatter(f_component_size, f_counts, c = "red", alpha = 0.2)
+    # plt.title("Counts of barcodes by component size, true blue, other red")
+    # plt.savefig("counts_all_by_size_NewStereoQ.png")
+    # #plt.show()
+    # plt.figure()
+    # plt.scatter(component_size, degree, alpha = 0.2)
+    # plt.scatter(f_component_size, f_degree, c = "red", alpha = 0.2)
+    # plt.title("Degrees of barcodes by component size, true blue, other red")
+    # plt.savefig("degrees_all_by_size_NewStereoQ.png")
+    # #plt.show()
+    # plt.figure()
+    # plt.scatter(f_component_size, f_degree, c = "red")
+    # plt.title("Degrees of not true barcodes by component size")
+    # plt.savefig("degrees_nt_by_size_NewStereoQ.png")
+    # #plt.show()
+    # plt.figure()
+    # plt.scatter(f_component_size, f_counts, c = "red")
+    # plt.title("Counts of not true barcodes by component size")
+    # plt.savefig("counts_nt_by_size_NewStereoQ.png")
+    # #plt.show()
     plt.figure()
     plt.hist(f_counts, bins = 80, color = "red", log = True)
     plt.title("Counts of not true barcodes")
-    plt.savefig("counts_nt_P7.10p.png")
+    plt.savefig("counts_nt_NewStereoQ.png")
     #plt.show()
     plt.figure()
     plt.hist(f_degree, bins = 25, color = "red")
     plt.title("Degrees of not true barcodes")
-    plt.savefig("degrees_nt_P7.10p.png")
+    plt.savefig("degrees_nt_NewStereoQ.png")
     #plt.show()
-    plt.figure()
-    plt.scatter(component_size, counts, c = "blue")
-    plt.title("Degrees of true barcodes by component size")
-    plt.savefig("degrees_t_by_size_P7.10p.png")
-    #plt.show()
-    plt.figure()
-    plt.scatter(component_size, degree, c = "blue")
-    plt.title("Counts of true barcodes by component size")
-    plt.savefig("counts_t_by_size_P7.10p.png")
-    #plt.show()
+    # plt.figure()
+    # plt.scatter(component_size, counts, c = "blue")
+    # plt.title("Degrees of true barcodes by component size")
+    # plt.savefig("degrees_t_by_size_NewStereoQ.png")
+    # #plt.show()
+    # plt.figure()
+    # plt.scatter(component_size, degree, c = "blue")
+    # plt.title("Counts of true barcodes by component size")
+    # plt.savefig("counts_t_by_size_NewStereoQ.png")
+    # #plt.show()
     plt.figure()
     plt.hist(counts, bins = 80, color = "blue", log = True)
     plt.title("Counts of true barcodes")
-    plt.savefig("counts_t_P7.10p.png")
+    plt.savefig("counts_t_NewStereoQ.png")
     #plt.show()
     plt.figure()
     plt.hist(degree, bins = 25, color = "blue")
     plt.title("Degrees of true barcodes")
-    plt.savefig("degrees_t_P7.10p.png")
+    plt.savefig("degrees_t_NewStereoQ.png")
     #plt.show()
     
 def components_without_true(graph, true_barcodes, true_assignment, bc_len):
@@ -671,6 +688,26 @@ def choose_true(graph, true_barcodes, barcode_list, n_cells, bc_len):
         if bc not in true_barcodes:
             print("Barcode included but not true")
             print(bc, graph.counts[tbc])
+            wrong += 1
+    print(wrong)
+    
+def evaluate_centers(graph, cluster_centers, true_barcodes, barcode_list, bc_len):
+    print("Number of chosen cluster centers: ", len(cluster_centers))
+    wrong = 0
+    for tbc in true_barcodes:
+        bc = rank(tbc, bc_len)
+        if not tbc in barcode_list:
+            print("True barcode not in barcode list")
+            print(tbc)
+        if bc not in cluster_centers:
+            print("True barcode not included")
+            print(tbc, graph.counts[bc])
+            wrong += 1
+    for bc in cluster_centers:
+        tbc = unrank(bc, bc_len)
+        if tbc not in true_barcodes:
+            print("Barcode included but not true")
+            print(tbc, graph.counts[bc])
             wrong += 1
     print(wrong)
     

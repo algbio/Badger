@@ -15,7 +15,7 @@ from io import StringIO
 from traceback import print_exc
 
 from barcode_graph import BarcodeGraph
-import statistics
+import stats
 
 logger = logging.getLogger('BarcodeGraph')
 
@@ -39,6 +39,7 @@ def parse_args(args):
                         type = int, default = 5000)
     parser.add_argument("--output", "-o", help = "File prefix for output files",
                         type = str, default = "OUT")
+    parser.add_argument("--interval", "-i", help = "Percentage by which the number of cells is allowed to differ from estimated cell number, default 25%", default = 25, type = int)
     parser.add_argument("--stats", "-s", action='store_true', help = "if set, true barcode statistics are run instead of barcode calling.", default = False)
     parser.add_argument("--threads", "-tr", dest = "threads", default = 1, type = int)
     parser.add_argument("--high_sens", "-hs", action='store_true', help = "if set, Badger is run in high sensitivity mode. This increases recall but decreases precision", default = False)
@@ -118,7 +119,7 @@ def main(args):
     logger.info("Graph construction done")
     
     if not args.stats:
-        graph.cluster(true_barcodes, barcode_list, args.n_cells, bc_len)
+        graph.cluster(true_barcodes, barcode_list, args.n_cells, bc_len, args.interval)
         logger.info("Clustering done")
         
         
@@ -129,12 +130,14 @@ def main(args):
             
     if args.stats:
         logger.info("Statistics being calculated")
-        #statistics.graph_statistics(graph, true_barcodes)
-        #statistics.choose_true(graph, true_barcodes, barcode_list, args.n_cells)
-        #statistics.visualize_graph(graph)
-        #statistics.true_barcode_stats(graph, true_barcodes)
-        #statistics.large_component(graph, true_barcodes)
-        #statistics.print_components(graph, true_barcodes)
+        tbcs = graph.get_cluster_centers(None, bc_len, barcode_list, args.n_cells, args.interval)
+        stats.evaluate_centers(graph, tbcs, true_barcodes, barcode_list, bc_len)
+        #stats.graph_statistics(graph, true_barcodes)
+        #stats.choose_true(graph, true_barcodes, barcode_list, args.n_cells)
+        #stats.visualize_graph(graph)
+        stats.true_barcode_stats(graph, true_barcodes, bc_len)
+        #stats.large_component(graph, true_barcodes)
+        #stats.print_components(graph, true_barcodes)
     
     
     if args.ground_truth is not None:
