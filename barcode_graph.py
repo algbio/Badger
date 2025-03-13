@@ -19,6 +19,7 @@ import edlib
 import itertools
 from Levenshtein import distance
 from concurrent.futures import ProcessPoolExecutor
+from statistics import median, mean
 
 from index import QGramIndex
 from common import get_score, dfs, dfs_without_recursion, rank, unrank
@@ -307,25 +308,39 @@ class BarcodeGraph:
                             # logger.info(f"processed {num} distinct barcodes")
                             
         
-    def cluster(self, true_barcodes, barcode_list, n_cells, bc_len):
-        #self.clustered = [False for node in self.counts.keys()]
-        
+    def get_cluster_centers(self, true_barcodes, bc_len, barcode_list, n_cells, interval):
         sorted_counts = dict(sorted(self.counts.items(), key=lambda item: item[1],reverse = True))
         bc_by_counts = list(sorted_counts.keys())
+        cutoff = mean(list(self.counts.values())[:(n_cells)])
+        cutoff = max(cutoff/5.0, 5)
         tbcs = []
         n = 0
         i = 0
         if true_barcodes:
             tbcs = [rank(bc, bc_len) for bc in true_barcodes]
         elif barcode_list:
-            while n < n_cells and i < len(bc_by_counts):
+            while i < len(bc_by_counts) and self.counts[bc_by_counts[i]] > cutoff and n <= n_cells + n_cells*interval*0.01:
                 #print(bc_by_counts[i])
                 if unrank(bc_by_counts[i], bc_len) in barcode_list:
                     tbcs.append(bc_by_counts[i])
                     n+=1
                 i+=1
         else:
-            tbcs = bc_by_counts[:n_cells]
+            while self.counts[bc_by_counts[i]] > cutoff and n <= n_cells + n_cells*interval*0.01:
+                tbcs.append(bc_by_counts[i])
+                i += 1
+                n += 1
+            #tbcs = bc_by_counts[:n_cells]
+        while n < n_cells - n_cells*interval*0.01:
+            tbcs.append(bc_by_counts[i])
+            i += 1
+            n += 1
+        return tbcs
+    
+    def cluster(self, true_barcodes, barcode_list, n_cells, bc_len, interval):
+        #self.clustered = [False for node in self.counts.keys()]
+        
+        tbcs = self.get_cluster_centers(true_barcodes, bc_len, barcode_list, n_cells, interval)
         
         for tbc in tbcs:
             # tbc = rank(tbc, bc_len)
