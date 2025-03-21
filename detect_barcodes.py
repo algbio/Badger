@@ -20,11 +20,10 @@ from collections import defaultdict
 import pysam
 from Bio import SeqIO
 import logging
+
 from barcode_extraction.barcode_callers import (
     TenXBarcodeDetector,
-    DoubleBarcodeDetector,
-    IlluminaDoubleBarcodeDetector,
-    BruteForceDoubleBarcodeDetector,
+    TenXVersions,
     ReadStats
 )
 
@@ -32,10 +31,8 @@ logger = logging.getLogger('BarcodeGraph')
 
 
 READ_CHUNK_SIZE = 100000
-BARCODE_CALLING_MODES = {'tenX': TenXBarcodeDetector,
-                         'double': DoubleBarcodeDetector,
-                         'double_illumina': IlluminaDoubleBarcodeDetector,
-                         'double_slow': BruteForceDoubleBarcodeDetector}
+BARCODE_CALLING_MODES = {'tenX_v2': (TenXBarcodeDetector, TenXVersions.v2),
+                         'tenX_v3': (TenXBarcodeDetector, TenXVersions.v3)}
 
 
 class BarcodeCaller:
@@ -139,9 +136,11 @@ def process_single_thread(args):
     barcodes = load_barcodes(args.barcodes)
     logger.info("Loaded %d barcodes" % len(barcodes))
     logger.info("Processing " + args.input)
-    barcode_detector = BARCODE_CALLING_MODES[args.mode](barcodes)
-    if args.min_score:
-        barcode_detector.min_score = args.min_score
+    protocol_version = BARCODE_CALLING_MODES[args.mode][1]
+    if protocol_version is not None:
+        barcode_detector = BARCODE_CALLING_MODES[args.mode][0](barcodes, protocol_version)
+    else:
+        barcode_detector = BARCODE_CALLING_MODES[args.mode][0](barcodes)
     barcode_caller = BarcodeCaller(args.output, barcode_detector)
     barcode_caller.process(args.input)
     logger.info("Finished barcode calling")
@@ -237,8 +236,6 @@ def parse_args(sys_argv):
                         required=True)
     parser.add_argument("--threads", "-t", type=int, help="threads to use (16)", default=16)
     parser.add_argument("--tmp_dir", type=str, help="folder for temporary files")
-    parser.add_argument("--min_score", type=int, help="minimal barcode score "
-                                                      "(scoring system is +1, -1, -1, -1)", default=13)
 
     args = parser.parse_args(sys_argv)
     return args
