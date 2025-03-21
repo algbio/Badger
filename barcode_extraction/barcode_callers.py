@@ -455,10 +455,10 @@ class TenXBarcodeDetector:
     TERMINAL_MATCH_DELTA = 4
     STRICT_TERMINAL_MATCH_DELTA = 1
 
-    def __init__(self, barcode_list, protocol_version=TenXVersions.v3.name):
+    def __init__(self, barcode_list, protocol_version=TenXVersions.v3):
         self.r1_indexer = KmerIndexer([TenXBarcodeDetector.R1], kmer_size=6)
         self.barcode_indexer = KmerIndexer(barcode_list, kmer_size=6)
-        self.UMI_LEN_10X = self.UMI_LENGTHS[TenXVersions(protocol_version)]
+        self.UMI_LEN_10X = self.UMI_LENGTHS[protocol_version]
 
     def find_barcode_umi(self, read_id, sequence):
         read_result = self._find_barcode_umi_fwd(read_id, sequence)
