@@ -41,6 +41,22 @@ class BarcodeDetectionResult:
         return "%s\t%s\t%s\t%d\t%s\t%s" % (self.read_id, self.barcode, self.UMI,
                                            self.BC_score, self.UMI_good, self.strand)
 
+    def __getstate__(self):
+        return (self.read_id,
+                self.barcode,
+                self.UMI,
+                self.BC_score,
+                self.UMI_good,
+                self.strand)
+
+    def __setstate__(self, state):
+        self.read_id = state[0]
+        self.barcode = state[1]
+        self.UMI = state[2]
+        self.BC_score = state[3]
+        self.UMI_good = state[4]
+        self.strand = state[5]
+
     @staticmethod
     def header():
         return "#read_id\tbarcode\tUMI\tBC_score\tvalid_UMI\tstrand"
@@ -75,6 +91,28 @@ class TenXBarcodeDetectionResult(BarcodeDetectionResult):
     def __str__(self):
         return (BarcodeDetectionResult.__str__(self) +
                 "\t%d\t%d" % (self.polyT, self.r1))
+
+    def __getstate__(self):
+        return (self.read_id,
+                self.barcode,
+                self.UMI,
+                self.BC_score,
+                self.UMI_good,
+                self.strand,
+                self.r1,
+                self.polyT,
+                self.r1_score)
+
+    def __setstate__(self, state):
+        self.read_id = state[0]
+        self.barcode = state[1]
+        self.UMI = state[2]
+        self.BC_score = state[3]
+        self.UMI_good = state[4]
+        self.strand = state[5]
+        self.r1 = state[6]
+        self.polyT = state[7]
+        self.r1_score = state[8]
 
     @staticmethod
     def header():
