@@ -250,3 +250,14 @@ class TenXBarcodeDetector:
     @staticmethod
     def result_type():
         return TenXBarcodeDetectionResult
+
+
+
+class TenXBarcodeDetectorV2(TenXBarcodeDetector):
+    def __init__(self, barcode_list):
+        TenXBarcodeDetector.__init__(self, barcode_list, TenXVersions.v2)
+
+
+class TenXBarcodeDetectorV3(TenXBarcodeDetector):
+    def __init__(self, barcode_list):
+        TenXBarcodeDetector.__init__(self, barcode_list, TenXVersions.v3)
