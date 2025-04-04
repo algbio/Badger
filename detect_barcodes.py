@@ -22,8 +22,8 @@ from Bio import SeqIO
 import logging
 
 from barcode_extraction.barcode_callers import (
-    TenXBarcodeDetector,
-    TenXVersions,
+    TenXBarcodeDetectorV2,
+    TenXBarcodeDetectorV3,
     ReadStats
 )
 
@@ -31,8 +31,8 @@ logger = logging.getLogger('BarcodeGraph')
 
 
 READ_CHUNK_SIZE = 100000
-BARCODE_CALLING_MODES = {'tenX_v2': (TenXBarcodeDetector, TenXVersions.v2),
-                         'tenX_v3': (TenXBarcodeDetector, TenXVersions.v3)}
+BARCODE_CALLING_MODES = {'tenX_v2': TenXBarcodeDetectorV2,
+                         'tenX_v3': TenXBarcodeDetectorV3}
 
 
 class BarcodeCaller:
@@ -136,11 +136,7 @@ def process_single_thread(args):
     barcodes = load_barcodes(args.barcodes)
     logger.info("Loaded %d barcodes" % len(barcodes))
     logger.info("Processing " + args.input)
-    protocol_version = BARCODE_CALLING_MODES[args.mode][1]
-    if protocol_version is not None:
-        barcode_detector = BARCODE_CALLING_MODES[args.mode][0](barcodes, protocol_version)
-    else:
-        barcode_detector = BARCODE_CALLING_MODES[args.mode][0](barcodes)
+    barcode_detector = BARCODE_CALLING_MODES[args.mode](barcodes)
     barcode_caller = BarcodeCaller(args.output, barcode_detector)
     barcode_caller.process(args.input)
     logger.info("Finished barcode calling")
@@ -180,8 +176,6 @@ def process_in_parallel(args):
     os.makedirs(tmp_dir)
 
     barcode_detector = BARCODE_CALLING_MODES[args.mode](barcodes)
-    if args.min_score:
-        barcode_detector.min_score = args.min_score
     barcode_calling_gen = (
         process_chunk,
         itertools.repeat(barcode_detector),
