@@ -85,9 +85,7 @@ class ArrayKmerIndexer:
         self.seq_list = list(known_strings)
         self.k = kmer_size
         total_kmers = int(math.pow(4, kmer_size))
-        self.index = []
-        for i in range(total_kmers):
-            self.index.append([])
+        self.index = [[] for i in range(total_kmers)]
         self.mask = (1 << (2 * self.k)) - 1
         self._index()
 
