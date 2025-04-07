@@ -127,7 +127,7 @@ To run Badger, you should provide:
 * Extracting 10x single cell barcodes from reads
 
 ```bash
-detect_barcodes.py --barcodes whitelist.txt --input scRNAseq_reads.fasta
+extract_raw_barcodes.py --barcodes whitelist.txt --input scRNAseq_reads.fasta
   --mode tenX --output barcode_file
 ```
 
