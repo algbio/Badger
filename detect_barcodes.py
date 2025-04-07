@@ -5,7 +5,7 @@
 # # All Rights Reserved
 # See file LICENSE for details.
 ############################################################################
-
+import concurrent
 import os
 import random
 import sys
@@ -142,10 +142,8 @@ def process_single_thread(args):
     logger.info("Finished barcode calling")
 
 
-def process_in_parallel(args):
-    barcodes = load_barcodes(args.barcodes)
-    logger.info("Loaded %d barcodes" % len(barcodes))
 
+def process_in_parallel(args):
     input_file = args.input
     logger.info("Processing " + input_file)
     fname, outer_ext = os.path.splitext(os.path.basename(input_file))
@@ -175,17 +173,46 @@ def process_in_parallel(args):
         tmp_dir = os.path.join(args.tmp_dir, tmp_dir)
     os.makedirs(tmp_dir)
 
+    tmp_barcode_file = os.path.join(tmp_dir, "bc")
+    count = 0
+    future_results = []
+    output_files = []
+
+    logger.info("Loading barcodes from %s" % args.barcodes)
+    barcodes = load_barcodes(args.barcodes)
+    # logger.info("Loaded %d barcodes" % len(barcodes))
     barcode_detector = BARCODE_CALLING_MODES[args.mode](barcodes)
-    barcode_calling_gen = (
-        process_chunk,
-        itertools.repeat(barcode_detector),
-        read_chunk_gen,
-        itertools.repeat(os.path.join(tmp_dir, "bc")),
-        itertools.count(start=0, step=1),
-    )
+    logger.info("Barcode caller created")
 
     with ProcessPoolExecutor(max_workers=args.threads) as proc:
-        output_files = proc.map(*barcode_calling_gen, chunksize=1)
+        for chunk in read_chunk_gen:
+            future_results.append(proc.submit(process_chunk, barcode_detector, chunk, tmp_barcode_file, count))
+            count += 1
+            if count >= args.threads:
+                break
+
+        reads_left = True
+        while reads_left:
+            completed_features, _ = concurrent.futures.wait(future_results, return_when=concurrent.futures.FIRST_COMPLETED)
+            for c in completed_features:
+                if c.exception() is not None:
+                    raise c.exception()
+                future_results.remove(c)
+                output_files.append(c.result())
+                if reads_left:
+                    try:
+                        chunk = next(read_chunk_gen)
+                        future_results.append(proc.submit(process_chunk, barcode_detector, chunk, tmp_barcode_file, count))
+                        count += 1
+                    except StopIteration:
+                        reads_left = False
+
+        completed_features, _ = concurrent.futures.wait(future_results, return_when=concurrent.futures.ALL_COMPLETED)
+        for c in completed_features:
+            if c.exception() is not None:
+                raise c.exception()
+            output_files.append(c.result())
+
     outf = open(args.output, "w")
     stat_dict = defaultdict(int)
     for tmp_file in output_files:
@@ -198,7 +225,7 @@ def process_in_parallel(args):
 
     for k, v in stat_dict.items():
         logger.info("%s: %d" % (k, v))
-    shutil.rmtree(tmp_dir)
+    # shutil.rmtree(tmp_dir)
     logger.info("Finished barcode calling")
 
 
