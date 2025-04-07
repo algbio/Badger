@@ -224,8 +224,8 @@ def process_in_parallel(args):
             stat_dict[v[0]] += int(v[1])
 
     for k, v in stat_dict.items():
-        logger.info("%s: %d" % (k, v))
-    # shutil.rmtree(tmp_dir)
+        logger.info("%s %d" % (k, v))
+    shutil.rmtree(tmp_dir)
     logger.info("Finished barcode calling")
 
 
