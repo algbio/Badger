@@ -35,20 +35,46 @@ BARCODE_CALLING_MODES = {'tenX_v2': TenXBarcodeDetectorV2,
                          'tenX_v3': TenXBarcodeDetectorV3}
 
 
-class BarcodeCaller:
-    def __init__(self, output_table, barcode_detector):
-        self.barcode_detector = barcode_detector
-        self.output_table = output_table
-        self.output_file = open(output_table, "w")
-        self.output_file.write(barcode_detector.result_type().header() + "\n")
-        self.read_stat = ReadStats()
+class FileReadHandler:
+    def __init__(self, outfile):
+        self.output_table = outfile
+        self.output_file = open(self.output_table, "w")
+
+    def add_header(self, header):
+        self.output_file.write(header + "\n")
+
+    def add_read(self, barcode_result):
+        self.output_file.write(str(barcode_result) + "\n")
+
+    def dump_stats(self, read_stat):
+        stat_out = open(self.output_table + ".stats", "w")
+        stat_out.write(str(read_stat))
+        stat_out.close()
 
     def __del__(self):
-        # logger.info("\n%s" % str(self.read_stat))
-        stat_out = open(self.output_table + ".stats", "w")
-        stat_out.write(str(self.read_stat))
-        stat_out.close()
         self.output_file.close()
+
+
+class ListReadHandler:
+    def __init__(self):
+        self.read_storage = []
+
+    def add_header(self, header):
+        pass
+
+    def add_read(self, barcode_result):
+        self.read_storage.append((barcode_result.read_id, barcode_result.barcode, barcode_result.umi))
+
+    def dump_stats(self, read_stat):
+        pass
+
+
+class BarcodeCaller:
+    def __init__(self, barcode_detector, read_handler):
+        self.barcode_detector = barcode_detector
+        self.read_handler = read_handler
+        self.read_handler.add_header(barcode_detector.result_type().header())
+        self.read_stat = ReadStats()
 
     def process(self, input_file):
         logger.info("Processing " + input_file)
@@ -95,7 +121,7 @@ class BarcodeCaller:
     def _process_read(self, read_id, read_sequence):
         logger.debug("==== %s ====" % read_id)
         barcode_result = self.barcode_detector.find_barcode_umi(read_id, read_sequence)
-        self.output_file.write("%s\n" % str(barcode_result))
+        self.read_handler.add_read(barcode_result)
         self.read_stat.add_read(barcode_result)
 
     def process_chunk(self, read_chunk):
@@ -127,8 +153,10 @@ def bam_file_chunk_reader(handler):
 
 def process_chunk(barcode_detector, read_chunk, output_file, num):
     output_file += "_" + str(num)
-    barcode_caller = BarcodeCaller(output_file, barcode_detector)
+    read_handler = FileReadHandler(output_file)
+    barcode_caller = BarcodeCaller(barcode_detector, read_handler)
     barcode_caller.process_chunk(read_chunk)
+    read_handler.dump_stats(barcode_caller.read_stat)
     return output_file
 
 
@@ -137,10 +165,15 @@ def process_single_thread(args):
     logger.info("Loaded %d barcodes" % len(barcodes))
     logger.info("Processing " + args.input)
     barcode_detector = BARCODE_CALLING_MODES[args.mode](barcodes)
-    barcode_caller = BarcodeCaller(args.output, barcode_detector)
+    read_handler = FileReadHandler(args.output)
+    barcode_caller = BarcodeCaller(barcode_detector, read_handler)
     barcode_caller.process(args.input)
-    logger.info("Finished barcode calling")
 
+    read_handler.dump_stats(barcode_caller.read_stat)
+    for l in str(barcode_caller.read_stat).split("\n"):
+        if l:
+            logger.info(l)
+    logger.info("Finished barcode calling")
 
 
 def process_in_parallel(args):
@@ -217,14 +250,19 @@ def process_in_parallel(args):
     stat_dict = defaultdict(int)
     for tmp_file in output_files:
         shutil.copyfileobj(open(tmp_file, "r"), outf)
+        if not os.path.exists(tmp_file + ".stats"):
+            logger.warning("Stats fiel %s was no found" % tmp_file + ".stats")
+            continue
         for l in open(tmp_file + ".stats", "r"):
             v = l.strip().split("\t")
             if len(v) != 2:
                 continue
             stat_dict[v[0]] += int(v[1])
 
+    out_stats = open(args.output + ".stats", "w")
     for k, v in stat_dict.items():
         logger.info("%s %d" % (k, v))
+        out_stats.write("%s %d\n" % (k, v))
     shutil.rmtree(tmp_dir)
     logger.info("Finished barcode calling")
 
