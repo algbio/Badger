@@ -15,6 +15,7 @@ from io import StringIO
 from traceback import print_exc
 
 from barcode_graph import BarcodeGraph
+from extract_raw_barcodes import extract_barcodes_in_parallel, extract_barcodes_single_thread, BARCODE_CALLING_MODES
 import stats
 
 logger = logging.getLogger('BarcodeGraph')
@@ -25,14 +26,14 @@ def parse_args(args):
     #                    type = str, dest = "bar_file", required = True)
     parser.add_argument("--threshold", "-t", help = "Maximal accepted difference between barcodes",
                         type = int, dest = "threshold", default = 1) 
-    parser.add_argument("--reads", "-r", help = "output file of barcode extraction algorithm",
+    parser.add_argument("--reads", "-r", help = "read in FASTQ/FASTA (can be gzipped), BAM or TSV from barcode extraction",
                         type = str, dest = "reads", required = True)
     parser.add_argument("--ground_truth", help = "File connecting each observed barcode to its read ID containing true barcode, only used for statistics",
                         type = str, default = None)
     parser.add_argument("--barcode_list", "-l", help = "List of all possible barcodes for the used method, helps identify correct barcodes",
                         type = str, dest = "barcode_list", default = None)
-    parser.add_argument("--data_type", "-d", help = "Type of single cell sequencing data in the input, options are 10x and Double", 
-                        choices = ["10x", "Visium"], type = str)
+    parser.add_argument("--data_type", "-d", help = "Type of single cell sequencing data in the input, options are 10x and Double",
+                        choices = BARCODE_CALLING_MODES.keys(), type = str)
     parser.add_argument("--true_barcodes", help = "List of all true barcodes of the input data, for example obtained from short read data",
                         type = str, default = None)
     parser.add_argument("--n_cells", "-c", help = "expected number of cell associated barcodes",
@@ -62,12 +63,12 @@ def main(args):
     args = parse_args(args)
     set_logger(logger)
     bc_len = 0
-    if args.data_type == "10x":
+    if args.data_type.startswith("tenX"):
         bc_len = 16
     elif args.data_type == "Double":
         bc_len = 20
     else:
-        logger.error("Please specify the type of single cell data used. Options are 10x and Double.")
+        logger.error("Please specify the type of single cell data used. Options are tenX_v2, tenX_v3 and Double.")
         exit(-3)
     # barcodes = pd.read_csv(args.bar_file, sep = "\t", header = None)
     # barcodes = barcodes.dropna()
@@ -92,26 +93,33 @@ def main(args):
         barcode_list = None
     
     out = args.output
-    reads = pd.read_csv(args.reads, sep = "\t")
-    ids = reads["#read_id"].tolist()
-    observed = reads["barcode"]
-    observed = observed.fillna('*')
-    observed = observed.tolist()
-    read_assignment = []
-    barcodes = reads["barcode"]
-    barcodes = barcodes.dropna()
-    barcodes = barcodes[barcodes != "*"]
-    barcodes = barcodes[barcodes != "barcode"]
-    barcodes = barcodes.tolist()
-    for i in range(len(ids)):
-        if ids[i] != "#read_id":
-            di = ids[i]
-            o = observed[i]
-            if o != "barcode":
-                if len(o) == bc_len + 1:
-                    o = o[:-1]
-                read_assignment.append((di, o))
-    logger.info("Imported barcodes from file")
+    if args.reads.endswith("tsv"):
+        reads = pd.read_csv(args.reads, sep = "\t")
+        ids = reads["#read_id"].tolist()
+        observed = reads["barcode"]
+        observed = observed.fillna('*')
+        observed = observed.tolist()
+        read_assignment = []
+        barcodes = reads["barcode"]
+        barcodes = barcodes.dropna()
+        barcodes = barcodes[barcodes != "*"]
+        barcodes = barcodes[barcodes != "barcode"]
+        barcodes = barcodes.tolist()
+        for i in range(len(ids)):
+            if ids[i] != "#read_id":
+                di = ids[i]
+                o = observed[i]
+                if o != "barcode":
+                    if len(o) == bc_len + 1:
+                        o = o[:-1]
+                    read_assignment.append((di, o))
+        logger.info("Imported barcodes from file")
+    else:
+        if args.threads == 1:
+            read_assignment = extract_barcodes_single_thread(args.reads, args.data_type)
+        else:
+            read_assignment = extract_barcodes_in_parallel(args.reads, args.data_type, args.threads)
+        barcodes = [filter(lambda x: x != "*", (ra[1] for ra in read_assignment))]
     
     logger.info("Initializing Graph")
     graph = BarcodeGraph(args.threshold)
