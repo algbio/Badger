@@ -8,8 +8,8 @@ import logging
 from collections import defaultdict
 from enum import Enum, unique
 
-from .kmer_indexer import KmerIndexer
-from .common import find_polyt_start, reverese_complement, detect_exact_positions
+from .kmer_indexer import KmerIndexer, Array2BitKmerIndexer
+from .common import find_polyt_start, reverese_complement, detect_exact_positions, str_to_2bit
 
 logger = logging.getLogger('BarcodeGraph')
 
@@ -160,7 +160,9 @@ class TenXBarcodeDetector:
 
     def __init__(self, barcode_list, protocol_version=TenXVersions.v3):
         self.r1_indexer = KmerIndexer([TenXBarcodeDetector.R1], kmer_size=6)
-        self.barcode_indexer = KmerIndexer(barcode_list, kmer_size=6)
+        bit_barcodes = map(str_to_2bit, barcode_list)
+        self.barcode_indexer = Array2BitKmerIndexer(bit_barcodes, kmer_size=6, seq_len=self.BARCODE_LEN_10X)
+        #self.barcode_indexer = KmerIndexer(barcode_list, kmer_size=6)
         self.UMI_LEN_10X = self.UMI_LENGTHS[protocol_version]
 
     def find_barcode_umi(self, read_id, sequence):
