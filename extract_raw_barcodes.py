@@ -12,7 +12,6 @@ import sys
 import argparse
 import gzip
 from traceback import print_exc
-import itertools
 import shutil
 from concurrent.futures import ProcessPoolExecutor
 from collections import defaultdict
@@ -63,7 +62,7 @@ class ListReadHandler:
         pass
 
     def add_read(self, barcode_result):
-        self.read_storage.append((barcode_result.read_id, barcode_result.barcode, barcode_result.umi))
+        self.read_storage.append((barcode_result.read_id, barcode_result.barcode, barcode_result.UMI))
 
     def dump_stats(self, read_stat):
         pass
