@@ -119,8 +119,8 @@ def main(args):
             read_assignment = extract_barcodes_single_thread(args.reads, args.data_type)
         else:
             read_assignment = extract_barcodes_in_parallel(args.reads, args.data_type, args.threads)
-        barcodes = [filter(lambda x: x != "*", (ra[1] for ra in read_assignment))]
-    
+        barcodes = list(filter(lambda x: x != "*", (ra[1] for ra in read_assignment)))
+
     logger.info("Initializing Graph")
     graph = BarcodeGraph(args.threshold)
     graph.graph_construction(barcodes, bc_len, args.threads)
