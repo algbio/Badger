@@ -70,14 +70,9 @@ def main(args):
     else:
         logger.error("Please specify the type of single cell data used. Options are tenX_v2, tenX_v3 and Double.")
         exit(-3)
-    # barcodes = pd.read_csv(args.bar_file, sep = "\t", header = None)
-    # barcodes = barcodes.dropna()
-    # barcodes = barcodes.iloc[:,0].tolist()
     true_barcodes = args.true_barcodes
     if true_barcodes:
         true_barcodes = pd.read_csv(true_barcodes, sep = "\t", header = None)
-        #true_barcodes = pd.read_csv('10x_barcodes_5K.tsv', sep = "\t", header = None)
-        #true_barcodes = pd.read_csv('barcodes.tsv', sep = "\t", header = None)
         true_barcodes = true_barcodes.iloc[:,0].tolist()
         if true_barcodes[0][-1] == '1':
             for i in range(len(true_barcodes)):
