@@ -31,6 +31,48 @@ def find_polyt_start(seq, window_size = 16, polya_fraction = 0.75):
     return i + max(0, seq[i:].find('TTT'))
 
 
+def find_polyt(seq, window_size = 16, polya_fraction = 0.75):
+    polyA_count = int(window_size * polya_fraction)
+
+    if len(seq) < window_size:
+        return -1, -1
+    i = 0
+    a_count = seq[0:window_size].count('T')
+    while i < len(seq) - window_size:
+        if a_count >= polyA_count:
+            break
+        first_base_a = seq[i] == 'T'
+        new_base_a = i + window_size < len(seq) and seq[i + window_size] == 'T'
+        if first_base_a and not new_base_a:
+            a_count -= 1
+        elif not first_base_a and new_base_a:
+            a_count += 1
+        i += 1
+
+    if i >= len(seq) - window_size:
+        return -1, -1
+    polyt_start = i + max(0, seq[i:].find('TTTT'))
+
+    while i < len(seq) - window_size:
+        if a_count < polyA_count:
+            break
+        first_base_a = seq[i] == 'T'
+        new_base_a = i + window_size < len(seq) and seq[i + window_size] == 'T'
+        if first_base_a and not new_base_a:
+            a_count -= 1
+        elif not first_base_a and new_base_a:
+            a_count += 1
+        i += 1
+
+    if i >= len(seq) - window_size:
+        polyt_end = len(seq) - 1
+    else:
+        last_t_pos = seq[i:i + window_size].rfind('TTTT')
+        polyt_end = i + window_size - 1 if last_t_pos == -1 else i + last_t_pos + 4
+
+    return polyt_start, polyt_end
+
+
 base_comp = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N', " ": " "}
 
 

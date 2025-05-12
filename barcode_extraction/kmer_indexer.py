@@ -26,6 +26,15 @@ class KmerIndexer:
             kmer = kmer[1:] + seq[i]
             yield kmer
 
+    def _get_kmers_substr(self, seq, start, end):
+        if end - start + 1 < self.k:
+            return
+        kmer = seq[start:start + self.k]
+        yield kmer
+        for i in range(start + self.k, min(len(seq), end + 1)):
+            kmer = kmer[1:] + seq[i]
+            yield kmer
+
     def _index(self):
         for i, barcode in enumerate(self.seq_list):
             for kmer in self._get_kmers(barcode):
@@ -60,6 +69,34 @@ class KmerIndexer:
             if count < min_kmers:
                 continue
             if ignore_equal and self.seq_list[i] == sequence:
+                continue
+            result.append((self.seq_list[i], count, barcode_positions[i]))
+
+        if not result:
+            return {}
+
+        top_hits = max(result, key=lambda x: x[1])[1]
+        result = filter(lambda x: x[1] >= top_hits - hits_delta, result)
+        result = sorted(result, reverse=True, key=lambda x: x[1])
+
+        if max_hits == 0:
+            return {x[0]:x for x in result}
+        return {x[0]:x for x in list(result)[:max_hits]}
+
+    # [start, end]
+    def get_occurrences_substr(self, sequence, start, end, max_hits=0, min_kmers=1, hits_delta=1):
+        barcode_counts = defaultdict(int)
+        barcode_positions = defaultdict(list)
+
+        for pos, kmer in enumerate(self._get_kmers_substr(sequence, start, end)):
+            for i in self.index[kmer]:
+                barcode_counts[i] += 1
+                barcode_positions[i].append(pos)
+
+        result = []
+        for i in barcode_counts.keys():
+            count = barcode_counts[i]
+            if count < min_kmers:
                 continue
             result.append((self.seq_list[i], count, barcode_positions[i]))
 
