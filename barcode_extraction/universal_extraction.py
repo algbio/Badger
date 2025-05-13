@@ -5,8 +5,6 @@
 ############################################################################
 
 import logging
-import math
-from collections import defaultdict
 from enum import Enum, unique
 
 from .kmer_indexer import KmerIndexer
@@ -85,10 +83,18 @@ class MoleculeStructure:
 
 
 class DetectedElement:
-    def __init__(self, start, end, score):
+    def __init__(self, start=-1, end=-1, score=-1, seq=None):
         self.start = start
         self.end = end
         self.score = score
+        self.seq = seq
+
+
+class ExtractionResult:
+    def __init__(self, read_id: str, strand: str, detected_results: dict):
+        self.read_id = read_id
+        self.stand = strand
+        self.detected_results = detected_results
 
 
 class UniversalSingleMoleculeExtractor:
@@ -96,6 +102,7 @@ class UniversalSingleMoleculeExtractor:
     MIN_SCORE_COEFF_TERMMINAL = 0.5
     TERMINAL_MATCH_DELTA = 3
     MAX_LEN_DIFF = 0.2
+
     def __init__(self, molecule_structure: MoleculeStructure):
         self.molecule_structure = molecule_structure
         self.index_dict = {}
@@ -125,20 +132,21 @@ class UniversalSingleMoleculeExtractor:
             exit(-2)
 
     def find_patterns(self, read_id, sequence):
-        read_result = self._find_patterns_fwd(read_id, sequence)
-        if read_result.polyT != -1:
-            read_result.set_strand("+")
-
+        detected_elements_fwd = self._find_patterns_fwd(read_id, sequence)
         rev_seq = reverese_complement(sequence)
-        read_rev_result = self._find_patterns_fwd(read_id, rev_seq)
-        if read_rev_result.polyT != -1:
-            read_rev_result.set_strand("-")
+        detected_elements_rev = self._find_patterns_fwd(read_id, rev_seq)
 
-        if read_rev_result.is_valid() and read_result.is_valid():
-            return read_result if read_result.more_informative_than(read_rev_result) else read_rev_result
-        if read_rev_result.is_valid():
-            return read_rev_result
-        return read_result
+        if self.has_polyt:
+            fwd_has_polyt = ElementType.PolyT.name in detected_elements_fwd
+            rev_has_polyt = ElementType.PolyT.name in detected_elements_rev
+            if fwd_has_polyt and not rev_has_polyt:
+                return ExtractionResult(read_id, '+', detected_elements_fwd)
+            if not fwd_has_polyt and rev_has_polyt:
+                return ExtractionResult(read_id, '-', detected_elements_rev)
+
+        if len(detected_elements_fwd) >= len(detected_elements_rev):
+            return ExtractionResult(read_id, '+', detected_elements_fwd)
+        return ExtractionResult(read_id, '-', detected_elements_rev)
 
     def _find_patterns_fwd(self, read_id, sequence):
         logger.debug("== read id %s ==" % read_id)
@@ -146,13 +154,16 @@ class UniversalSingleMoleculeExtractor:
         polyt_start, polyt_end = -1, -1
         if self.has_polyt:
             polyt_start, polyt_end = find_polyt(sequence)
-            detected_elements[ElementType.PolyT] = DetectedElement(polyt_start, polyt_end, 0)
+            detected_elements[ElementType.PolyT.name] = DetectedElement(polyt_start, polyt_end, 0)
         logger.debug("PolyT %d" % polyt_start)
 
         self.detect_const_elements(sequence, polyt_start, polyt_end, detected_elements)
-        self.extract_variable_elements5(detected_elements)
+        self.extract_variable_elements5(detected_elements, sequence)
+        self.extract_variable_elements3(detected_elements, sequence)
+        logger.debug("== end read id %s ==" % read_id)
+        return detected_elements
 
-    def extract_variable_elements5(self, detected_elements):
+    def extract_variable_elements5(self, detected_elements, sequence):
         first_detected_const_element = None
         for i, el in enumerate(self.molecule_structure):
             if el.element_type == ElementType.cDNA:
@@ -171,7 +182,8 @@ class UniversalSingleMoleculeExtractor:
             potential_end = current_pos
             potential_start = potential_end - el.element_length + 1
             if potential_start < 0: break
-            detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0)
+            detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
+                                                                 seq=sequence[potential_start:potential_end+1])
 
         current_pos = detected_elements[self.molecule_structure.ordered_elements[first_detected_const_element].element_name].end + 1
         for i in range(first_detected_const_element + 1, len(self.molecule_structure.ordered_elements)):
@@ -187,14 +199,64 @@ class UniversalSingleMoleculeExtractor:
             potential_start = current_pos
             if i + 1 == len(self.molecule_structure.ordered_elements):
                 potential_end = potential_start + el.element_length - 1
-            next_el = self.molecule_structure.ordered_elements[i + 1]
-            if next_el.element_name in detected_elements:
-                potential_end = detected_elements[next_el].start - 1
             else:
-                potential_end = potential_start + el.element_length - 1
+                next_el = self.molecule_structure.ordered_elements[i + 1]
+                if next_el.element_name in detected_elements:
+                    potential_end = detected_elements[next_el].start - 1
+                else:
+                    potential_end = potential_start + el.element_length - 1
             potential_len = potential_end - potential_start + 1
             if abs(potential_len - el.element_length) <= self.MAX_LEN_DIFF * el.element_length:
-                detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0)
+                detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
+                                                                     seq=sequence[potential_start:potential_end+1])
+
+    def extract_variable_elements3(self, detected_elements, sequence):
+        last_detected_const_element = None
+        for i in range(len(self.molecule_structure.ordered_elements) - 1, -1, -1):
+            el = self.molecule_structure.ordered_elements[i]
+            if el.element_type == ElementType.cDNA:
+                break
+            if el.element_type in [ElementType.CONST, ElementType.PolyT] and el.element_name in detected_elements:
+                last_detected_const_element = i
+                break
+
+        if last_detected_const_element is None: return
+
+        # extracting elements following last detected const element
+        current_pos = detected_elements[self.molecule_structure.ordered_elements[last_detected_const_element].element_name].end + 1
+        for i in range(last_detected_const_element + 1, len(self.molecule_structure.ordered_elements)):
+            el = self.molecule_structure.ordered_elements[i]
+            if not el.is_variable(): break
+            potential_start = current_pos
+            potential_end = potential_start + el.element_length - 1
+            if potential_end >= len(sequence): break
+            detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
+                                                                 seq=sequence[potential_start:potential_end+1])
+
+        current_pos = detected_elements[self.molecule_structure.ordered_elements[last_detected_const_element].element_name].start - 1
+        for i in range(last_detected_const_element - 1, -1, -1):
+            el = self.molecule_structure.ordered_elements[i]
+            if el.element_type in [ElementType.cDNA, ElementType.PolyT]: break
+            elif el.element_type == ElementType.CONST:
+                if el.element_name in detected_elements:
+                    current_pos = detected_elements[el.element_name].start - 1
+                else:
+                    current_pos -= el.element_length
+                continue
+
+            potential_end = current_pos
+            if i == 0:
+                potential_start = potential_end - el.element_length + 1
+            else:
+                prev_el = self.molecule_structure.ordered_elements[i - 1]
+                if prev_el.element_name in detected_elements:
+                    potential_start = detected_elements[prev_el].end + 1
+                else:
+                    potential_start = potential_end - el.element_length + 1
+            potential_len = potential_end - potential_start + 1
+            if abs(potential_len - el.element_length) <= self.MAX_LEN_DIFF * el.element_length:
+                detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
+                                                                     seq=sequence[potential_start:potential_end+1])
 
     def detect_const_elements(self, sequence, polyt_start, polyt_end, detected_elements):
         # searching left of cDNA
@@ -232,7 +294,6 @@ class UniversalSingleMoleculeExtractor:
 
             detected_elements[el.element_name] = DetectedElement(element_start, element_end, element_score)
 
-        # TODO: run the code above for reversed molecule structure
         last_element_detected = False
         current_search_end = len(sequence)
         for i in range(len(self.molecule_structure.ordered_elements) - 1, -1, -1):
