@@ -25,25 +25,31 @@ from barcode_extraction.barcode_callers import (
     TenXBarcodeExtractorV3,
     ReadStats
 )
+from barcode_extraction.universal_extraction import (
+    UniversalSingleMoleculeExtractor,
+    MoleculeStructure
+)
 
 logger = logging.getLogger('BarcodeGraph')
 
 
 READ_CHUNK_SIZE = 100000
 BARCODE_CALLING_MODES = {'tenX_v2': TenXBarcodeExtractorV2,
-                         'tenX_v3': TenXBarcodeExtractorV3}
+                         'tenX_v3': TenXBarcodeExtractorV3,
+                         'custom': UniversalSingleMoleculeExtractor}
 
 
 class FileReadHandler:
-    def __init__(self, outfile):
+    def __init__(self, outfile, formatter):
         self.output_table = outfile
         self.output_file = open(self.output_table, "w")
+        self.formatter = formatter
 
-    def add_header(self, header):
-        self.output_file.write(header + "\n")
+    def add_header(self):
+        self.output_file.write(self.formatter.header() + "\n")
 
     def add_read(self, barcode_result):
-        self.output_file.write(str(barcode_result) + "\n")
+        self.output_file.write(self.formatter.format_result(barcode_result) + "\n")
 
     def dump_stats(self, read_stat):
         stat_out = open(self.output_table + ".stats", "w")
@@ -72,7 +78,7 @@ class BarcodeCaller:
     def __init__(self, barcode_detector, read_handler):
         self.barcode_detector = barcode_detector
         self.read_handler = read_handler
-        self.read_handler.add_header(barcode_detector.result_type().header())
+        self.read_handler.add_header()
         self.read_stat = ReadStats()
 
     def process(self, input_file):
@@ -97,9 +103,9 @@ class BarcodeCaller:
             logger.error("Unknown file format " + input_file)
         logger.info("Finished " + input_file)
 
-    def _process_fastx(self, read_handler):
+    def _process_fastx(self, input_read_iterator):
         counter = 0
-        for r in read_handler:
+        for r in input_read_iterator:
             if counter % 100 == 0:
                 sys.stdout.write("Processed %d reads\r" % counter)
             counter += 1
@@ -107,9 +113,9 @@ class BarcodeCaller:
             seq = str(r.seq)
             self._process_read(read_id, seq)
 
-    def _process_bam(self, read_handler):
+    def _process_bam(self, input_read_iterator):
         counter = 0
-        for r in read_handler:
+        for r in input_read_iterator:
             if counter % 100 == 0:
                 sys.stdout.write("Processed %d reads\r" % counter)
             counter += 1
@@ -119,7 +125,7 @@ class BarcodeCaller:
 
     def _process_read(self, read_id, read_sequence):
         logger.debug("==== %s ====" % read_id)
-        barcode_result = self.barcode_detector.find_barcode_umi(read_id, read_sequence)
+        barcode_result = self.barcode_detector.find_patterns(read_id, read_sequence)
         self.read_handler.add_read(barcode_result)
         self.read_stat.add_read(barcode_result)
 
@@ -161,8 +167,12 @@ def process_chunk(barcode_detector, read_chunk, output_file, num):
 
 def process_single_thread(args):
     logger.info("Processing " + args.input)
-    barcode_detector = BARCODE_CALLING_MODES[args.mode]()
-    read_handler = FileReadHandler(args.output)
+    if args.mode == 'custom':
+        molecule_structure = MoleculeStructure(open(args.molecule))
+        barcode_detector = BARCODE_CALLING_MODES['custom'](molecule_structure)
+    else:
+        barcode_detector = BARCODE_CALLING_MODES[args.mode]()
+    read_handler = FileReadHandler(args.output, barcode_detector)
     barcode_caller = BarcodeCaller(barcode_detector, read_handler)
     barcode_caller.process(args.input)
 
@@ -259,7 +269,6 @@ def process_in_parallel(args):
         out_stats.write("%s %d\n" % (k, v))
     shutil.rmtree(tmp_dir)
     logger.info("Finished barcode calling")
-
 
 
 def extract_barcodes_from_chunk(barcode_detector, read_chunk):
@@ -361,7 +370,8 @@ def parse_args(sys_argv):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", "-o", type=str, help="output prefix name", required=True)
     parser.add_argument("--mode", type=str, help="mode to be used", choices=BARCODE_CALLING_MODES.keys(),
-                        default='double')
+                        default='custom')
+    parser.add_argument("--molecule", type=str, help="file with molecule description format")
     parser.add_argument("--input", "-i", type=str, help="input reads in [gzipped] FASTA, FASTQ, BAM, SAM",
                         required=True)
     parser.add_argument("--threads", "-t", type=int, help="threads to use (16)", default=16)

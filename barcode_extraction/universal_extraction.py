@@ -54,7 +54,7 @@ class MoleculeStructure:
     def __init__(self, str_iterator):
         self.ordered_elements: list[MoleculeElement] = []
 
-        l = str_iterator.next()
+        l = next(str_iterator)
         elements = list(map(lambda x: x.strip(), l.strip().split(':')))
         element_properties = {}
         for l in str_iterator:
@@ -80,6 +80,18 @@ class MoleculeStructure:
     def __iter__(self):
         for e in self.ordered_elements:
             yield e
+
+    def header(self):
+        header = "#read_id\tstrand"
+        for el in self.ordered_elements:
+            if el.element_type == ElementType.cDNA: continue
+            if el.element_type == ElementType.PolyT:
+                header += "\tpolyT_start\tpolyT_end"
+            elif el.element_type == ElementType.CONST:
+                header += "\t%s_start\t%s_end\t%s_score" % (el.element_name, el.element_name, el.element_name)
+            else:
+                header += "\t%s_start\t%s_end\t%s_seqeunce" % (el.element_name, el.element_name, el.element_name)
+        return header
 
 
 class DetectedElement:
@@ -130,6 +142,23 @@ class UniversalSingleMoleculeExtractor:
         if not self.has_cdna:
             logger.error("Molecule must include a cDNA")
             exit(-2)
+
+    def header(self):
+        return self.molecule_structure.header()
+
+    def format_result(self, result: ExtractionResult):
+        res_str = "%s\t%s" % (result.read_id, result.stand)
+        for el in self.molecule_structure:
+            if el.element_type == ElementType.cDNA: continue
+            if el.element_type == ElementType.PolyT:
+                detected_element = result.detected_results[ElementType.PolyT.name]
+                res_str += "\t%d\t%d" % (detected_element.start,detected_element.end)
+            elif el.element_type == ElementType.CONST:
+                detected_element = result.detected_results[el.element_name]
+                res_str += "\t%d\t%d\t%d" % (detected_element.start,detected_element.end, detected_element.score)
+            else:
+                detected_element = result.detected_results[el.element_name]
+                res_str += "\t%d\t%d\t%s" % (detected_element.start, detected_element.end, detected_element.seq)
 
     def find_patterns(self, read_id, sequence):
         detected_elements_fwd = self._find_patterns_fwd(read_id, sequence)

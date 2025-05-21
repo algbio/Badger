@@ -122,24 +122,18 @@ class TenXBarcodeDetectionResult(BarcodeDetectionResult):
 class ReadStats:
     def __init__(self):
         self.read_count = 0
-        self.bc_count = 0
-        self.umi_count = 0
-        self.additional_attributes_counts = defaultdict(int)
+        self.pattern_counts = defaultdict(int)
 
     def add_read(self, barcode_detection_result):
         self.read_count += 1
-        for a in barcode_detection_result.get_additional_attributes():
-            self.additional_attributes_counts[a] += 1
-        if barcode_detection_result.barcode != BarcodeDetectionResult.NOSEQ:
-            self.bc_count += 1
-        if barcode_detection_result.UMI_good:
-            self.umi_count += 1
+        for el in barcode_detection_result.detected_results:
+            if barcode_detection_result.detected_results[el].start != -1:
+                self.pattern_counts[el] += 1
 
     def __str__(self):
-        human_readable_str =  ("Total reads:\t%d\nBarcode detected:\t%d\nReliable UMI:\t%d\n" %
-                      (self.read_count, self.bc_count, self.umi_count))
-        for a in self.additional_attributes_counts:
-            human_readable_str += "%s:\t%d\n" % (a, self.additional_attributes_counts[a])
+        human_readable_str =  ("Total reads:\t%d\n" % self.read_count)
+        for a in self.pattern_counts:
+            human_readable_str += "%s:\t%d\n" % (a, self.pattern_counts[a])
         return human_readable_str
 
 
