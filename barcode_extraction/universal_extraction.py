@@ -231,7 +231,7 @@ class UniversalSingleMoleculeExtractor:
             else:
                 next_el = self.molecule_structure.ordered_elements[i + 1]
                 if next_el.element_name in detected_elements:
-                    potential_end = detected_elements[next_el].start - 1
+                    potential_end = detected_elements[next_el.element_name].start - 1
                 else:
                     potential_end = potential_start + el.element_length - 1
             potential_len = potential_end - potential_start + 1
@@ -252,6 +252,7 @@ class UniversalSingleMoleculeExtractor:
         if last_detected_const_element is None: return
 
         # extracting elements following last detected const element
+        print(last_detected_const_element, self.molecule_structure.ordered_elements[last_detected_const_element].element_name, detected_elements['TSO'].start, 3)
         current_pos = detected_elements[self.molecule_structure.ordered_elements[last_detected_const_element].element_name].end + 1
         for i in range(last_detected_const_element + 1, len(self.molecule_structure.ordered_elements)):
             el = self.molecule_structure.ordered_elements[i]
