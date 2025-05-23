@@ -151,14 +151,24 @@ class UniversalSingleMoleculeExtractor:
         for el in self.molecule_structure:
             if el.element_type == ElementType.cDNA: continue
             if el.element_type == ElementType.PolyT:
+                if ElementType.PolyT.name not in result.detected_results:
+                    res_str += "\t-1\t-1"
+                    continue
                 detected_element = result.detected_results[ElementType.PolyT.name]
-                res_str += "\t%d\t%d" % (detected_element.start,detected_element.end)
+                res_str += "\t%d\t%d" % (detected_element.start, detected_element.end)
             elif el.element_type == ElementType.CONST:
+                if el.element_name not in result.detected_results:
+                    res_str += "\t-1\t-1\t0"
+                    continue
                 detected_element = result.detected_results[el.element_name]
-                res_str += "\t%d\t%d\t%d" % (detected_element.start,detected_element.end, detected_element.score)
+                res_str += "\t%d\t%d\t%d" % (detected_element.start, detected_element.end, detected_element.score)
             else:
+                if el.element_name not in result.detected_results:
+                    res_str += "\t-1\t-1\t*"
+                    continue
                 detected_element = result.detected_results[el.element_name]
                 res_str += "\t%d\t%d\t%s" % (detected_element.start, detected_element.end, detected_element.seq)
+        return res_str
 
     def find_patterns(self, read_id, sequence):
         detected_elements_fwd = self._find_patterns_fwd(read_id, sequence)
@@ -213,9 +223,13 @@ class UniversalSingleMoleculeExtractor:
             if potential_start < 0: break
             detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
                                                                  seq=sequence[potential_start:potential_end+1])
+            current_pos = potential_start - 1
 
         current_pos = detected_elements[self.molecule_structure.ordered_elements[first_detected_const_element].element_name].end + 1
         for i in range(first_detected_const_element + 1, len(self.molecule_structure.ordered_elements)):
+            if current_pos >= len(sequence):
+                break
+
             el = self.molecule_structure.ordered_elements[i]
             if el.element_type in [ElementType.cDNA, ElementType.PolyT]: break
             elif el.element_type == ElementType.CONST:
@@ -234,10 +248,14 @@ class UniversalSingleMoleculeExtractor:
                     potential_end = detected_elements[next_el.element_name].start - 1
                 else:
                     potential_end = potential_start + el.element_length - 1
+            if potential_end >= len(sequence):
+                potential_end = len(sequence) + 1
+
             potential_len = potential_end - potential_start + 1
             if abs(potential_len - el.element_length) <= self.MAX_LEN_DIFF * el.element_length:
                 detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
                                                                      seq=sequence[potential_start:potential_end+1])
+            current_pos = potential_end + 1
 
     def extract_variable_elements3(self, detected_elements, sequence):
         last_detected_const_element = None
@@ -252,7 +270,6 @@ class UniversalSingleMoleculeExtractor:
         if last_detected_const_element is None: return
 
         # extracting elements following last detected const element
-        print(last_detected_const_element, self.molecule_structure.ordered_elements[last_detected_const_element].element_name, detected_elements['TSO'].start, 3)
         current_pos = detected_elements[self.molecule_structure.ordered_elements[last_detected_const_element].element_name].end + 1
         for i in range(last_detected_const_element + 1, len(self.molecule_structure.ordered_elements)):
             el = self.molecule_structure.ordered_elements[i]
@@ -262,9 +279,12 @@ class UniversalSingleMoleculeExtractor:
             if potential_end >= len(sequence): break
             detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
                                                                  seq=sequence[potential_start:potential_end+1])
+            current_pos = potential_end + 1
 
         current_pos = detected_elements[self.molecule_structure.ordered_elements[last_detected_const_element].element_name].start - 1
         for i in range(last_detected_const_element - 1, -1, -1):
+            if current_pos <= 0:
+                break
             el = self.molecule_structure.ordered_elements[i]
             if el.element_type in [ElementType.cDNA, ElementType.PolyT]: break
             elif el.element_type == ElementType.CONST:
@@ -283,10 +303,14 @@ class UniversalSingleMoleculeExtractor:
                     potential_start = detected_elements[prev_el].end + 1
                 else:
                     potential_start = potential_end - el.element_length + 1
+            if potential_start < 0:
+                potential_start = 0
+
             potential_len = potential_end - potential_start + 1
             if abs(potential_len - el.element_length) <= self.MAX_LEN_DIFF * el.element_length:
                 detected_elements[el.element_name] = DetectedElement(potential_start, potential_end, 0,
                                                                      seq=sequence[potential_start:potential_end+1])
+            current_pos = potential_start - 1
 
     def detect_const_elements(self, sequence, polyt_start, polyt_end, detected_elements):
         # searching left of cDNA
@@ -317,12 +341,13 @@ class UniversalSingleMoleculeExtractor:
                                                                                min_score=min_score,
                                                                                start_delta=start_delta,
                                                                                end_delta=self.TERMINAL_MATCH_DELTA)
-            if element_start:
+
+            if element_start is not None:
                 current_search_start = element_end
                 if not first_element_detected:
                     first_element_detected = True
 
-            detected_elements[el.element_name] = DetectedElement(element_start, element_end, element_score)
+                detected_elements[el.element_name] = DetectedElement(element_start, element_end, element_score)
 
         last_element_detected = False
         current_search_end = len(sequence)
@@ -353,12 +378,12 @@ class UniversalSingleMoleculeExtractor:
                                                                                min_score=min_score,
                                                                                start_delta=self.TERMINAL_MATCH_DELTA,
                                                                                end_delta=end_delta)
-            if element_start:
+            if element_start is not None:
                 current_search_end = element_end
                 if not last_element_detected:
                     last_element_detected = True
 
-            detected_elements[el.element_name] = DetectedElement(element_start, element_end, element_score)
+                detected_elements[el.element_name] = DetectedElement(element_start, element_end, element_score)
 
 
 
