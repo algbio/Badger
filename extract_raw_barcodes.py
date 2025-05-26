@@ -15,6 +15,7 @@ from traceback import print_exc
 import shutil
 from concurrent.futures import ProcessPoolExecutor
 from collections import defaultdict
+from enum import Enum, unique
 
 import pysam
 from Bio import SeqIO
@@ -33,10 +34,18 @@ from barcode_extraction.universal_extraction import (
 logger = logging.getLogger('BarcodeGraph')
 
 
+@unique
+class BarcodeCallingModes(Enum):
+    custom = 0
+    tenX_v2 = 12
+    tenX_v3 = 13
+    # tenX_5v2 = 15
+
+
 READ_CHUNK_SIZE = 100000
-BARCODE_CALLING_MODES = {'tenX_v2': TenXBarcodeExtractorV2,
-                         'tenX_v3': TenXBarcodeExtractorV3,
-                         'custom': UniversalSingleMoleculeExtractor}
+BARCODE_CALLING_MODES = {BarcodeCallingModes.tenX_v2: TenXBarcodeExtractorV2,
+                         BarcodeCallingModes.tenX_v3: TenXBarcodeExtractorV3,
+                         BarcodeCallingModes.custom: UniversalSingleMoleculeExtractor}
 
 
 class FileReadHandler:
@@ -167,9 +176,9 @@ def process_chunk(barcode_detector, read_chunk, output_file, num):
 
 def process_single_thread(args):
     logger.info("Processing " + args.input)
-    if args.mode == 'custom':
+    if args.mode == BarcodeCallingModes.custom:
         molecule_structure = MoleculeStructure(open(args.molecule))
-        barcode_detector = BARCODE_CALLING_MODES['custom'](molecule_structure)
+        barcode_detector = BARCODE_CALLING_MODES[args.mode](molecule_structure)
     else:
         barcode_detector = BARCODE_CALLING_MODES[args.mode]()
     read_handler = FileReadHandler(args.output, barcode_detector)
@@ -218,9 +227,9 @@ def process_in_parallel(args):
     future_results = []
     output_files = []
 
-    if args.mode == 'custom':
+    if args.mode == BarcodeCallingModes.custom:
         molecule_structure = MoleculeStructure(open(args.molecule))
-        barcode_detector = BARCODE_CALLING_MODES['custom'](molecule_structure)
+        barcode_detector = BARCODE_CALLING_MODES[args.mode](molecule_structure)
     else:
         barcode_detector = BARCODE_CALLING_MODES[args.mode]()
     logger.info("Barcode caller created")
@@ -373,8 +382,9 @@ def set_logger(logger_instance):
 def parse_args(sys_argv):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", "-o", type=str, help="output prefix name", required=True)
-    parser.add_argument("--mode", type=str, help="mode to be used", choices=BARCODE_CALLING_MODES.keys(),
-                        default='custom')
+    parser.add_argument("--mode", type=str, help="mode to be used",
+                        choices=[x.name for x in BarcodeCallingModes],
+                        required=True)
     parser.add_argument("--molecule", type=str, help="file with molecule description format")
     parser.add_argument("--input", "-i", type=str, help="input reads in [gzipped] FASTA, FASTQ, BAM, SAM",
                         required=True)
@@ -388,6 +398,13 @@ def parse_args(sys_argv):
 def main(sys_argv):
     args = parse_args(sys_argv)
     set_logger(logger)
+
+    args.mode = BarcodeCallingModes[args.mode]
+    if args.mode != BarcodeCallingModes.custom and args.molecule:
+        logger.warning("You set %s mode, but also provided a molecule structure file %s. "
+                       "Molecule structure file will have not effect, set mode to %s to use it." %
+                       (args.mode, args.molecule, BarcodeCallingModes.custom))
+
     if args.threads == 1:
         process_single_thread(args)
     else:
