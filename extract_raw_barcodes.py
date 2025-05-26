@@ -158,7 +158,7 @@ def bam_file_chunk_reader(handler):
 
 def process_chunk(barcode_detector, read_chunk, output_file, num):
     output_file += "_" + str(num)
-    read_handler = FileReadHandler(output_file)
+    read_handler = FileReadHandler(output_file, barcode_detector)
     barcode_caller = BarcodeCaller(barcode_detector, read_handler)
     barcode_caller.process_chunk(read_chunk)
     read_handler.dump_stats(barcode_caller.read_stat)
@@ -218,7 +218,11 @@ def process_in_parallel(args):
     future_results = []
     output_files = []
 
-    barcode_detector = BARCODE_CALLING_MODES[args.mode]()
+    if args.mode == 'custom':
+        molecule_structure = MoleculeStructure(open(args.molecule))
+        barcode_detector = BARCODE_CALLING_MODES['custom'](molecule_structure)
+    else:
+        barcode_detector = BARCODE_CALLING_MODES[args.mode]()
     logger.info("Barcode caller created")
 
     with ProcessPoolExecutor(max_workers=args.threads) as proc:
