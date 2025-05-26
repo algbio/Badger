@@ -27,9 +27,9 @@ from barcode_extraction.barcode_callers import (
     ReadStats
 )
 from barcode_extraction.universal_extraction import (
-    UniversalSingleMoleculeExtractor,
-    MoleculeStructure
+    UniversalSingleMoleculeExtractor
 )
+from barcode_extraction.molecule_structure import MoleculeStructure
 
 logger = logging.getLogger('BarcodeGraph')
 
