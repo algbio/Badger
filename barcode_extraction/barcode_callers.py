@@ -5,32 +5,15 @@
 ############################################################################
 
 import logging
-from collections import defaultdict
 from enum import Enum, unique
 
 from .kmer_indexer import KmerIndexer
 from .common import find_polyt_start, reverese_complement, detect_exact_positions
 from .extraction_result import ExtractionResult, DetectedElement
 from .molecule_structure import MoleculeStructure, MoleculeElement, ElementType
-logger = logging.getLogger('BarcodeGraph')
 
 
-class ReadStats:
-    def __init__(self):
-        self.read_count = 0
-        self.pattern_counts = defaultdict(int)
-
-    def add_read(self, barcode_detection_result):
-        self.read_count += 1
-        for el in barcode_detection_result.detected_results:
-            if barcode_detection_result.detected_results[el].start != -1:
-                self.pattern_counts[el] += 1
-
-    def __str__(self):
-        human_readable_str =  ("Total reads:\t%d\n" % self.read_count)
-        for a in self.pattern_counts:
-            human_readable_str += "%s:\t%d\n" % (a, self.pattern_counts[a])
-        return human_readable_str
+logger = logging.getLogger('Badger')
 
 
 @unique
@@ -72,15 +55,26 @@ class TenXBarcodeExtractor:
     def format_result(self, result: ExtractionResult):
         res_str = "%s\t%s" % (result.read_id, result.stand)
         for el in self.molecule_structure:
-            if el == ElementType.PolyT:
+            if el.element_type == ElementType.cDNA: continue
+            if el.element_type == ElementType.PolyT:
+                if ElementType.PolyT.name not in result.detected_results:
+                    res_str += "\t-1\t-1"
+                    continue
                 detected_element = result.detected_results[ElementType.PolyT.name]
-                res_str += "\t%d\t%d" % (detected_element.start,detected_element.end)
+                res_str += "\t%d\t%d" % (detected_element.start, detected_element.end)
             elif el.element_type == ElementType.CONST:
+                if el.element_name not in result.detected_results:
+                    res_str += "\t-1\t-1\t0"
+                    continue
                 detected_element = result.detected_results[el.element_name]
-                res_str += "\t%d\t%d\t%d" % (detected_element.start,detected_element.end, detected_element.score)
+                res_str += "\t%d\t%d\t%d" % (detected_element.start, detected_element.end, detected_element.score)
             else:
+                if el.element_name not in result.detected_results:
+                    res_str += "\t-1\t-1\t*"
+                    continue
                 detected_element = result.detected_results[el.element_name]
                 res_str += "\t%d\t%d\t%s" % (detected_element.start, detected_element.end, detected_element.seq)
+        return res_str
 
     def find_patterns(self, read_id, sequence):
         detected_elements_fwd = self._find_patterns_fwd(read_id, sequence)
@@ -157,24 +151,6 @@ class TenXBarcodeExtractor:
                                                                                seq=potential_umi)
 
         return detected_elements
-
-    def find_barcode_umi_no_polya(self, read_id, sequence):
-        logger.debug("===== FWD =====")
-        read_result = self._find_barcode_umi_fwd(read_id, sequence)
-        if read_result.polyT != -1:
-            read_result.set_strand("+")
-        if read_result.is_valid():
-            return read_result
-
-        rev_seq = reverese_complement(sequence)
-        logger.debug("===== REV =====")
-        read_rev_result = self._find_barcode_umi_fwd(read_id, rev_seq)
-        if read_rev_result.polyT != -1:
-            read_rev_result.set_strand("-")
-        if read_rev_result.is_valid():
-            return read_rev_result
-        logger.debug("===== DONE =====")
-        return read_result if read_result.more_informative_than(read_rev_result) else read_rev_result
 
 
 class TenXBarcodeExtractorV2(TenXBarcodeExtractor):

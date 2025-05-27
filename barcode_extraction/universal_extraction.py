@@ -11,7 +11,7 @@ from .kmer_indexer import KmerIndexer
 from .common import find_polyt, reverese_complement, detect_exact_positions
 from .molecule_structure import ElementType, MoleculeStructure
 
-logger = logging.getLogger('BarcodeGraph')
+logger = logging.getLogger('Badger')
 
 
 class UniversalSingleMoleculeExtractor:

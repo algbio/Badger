@@ -23,15 +23,15 @@ import logging
 
 from barcode_extraction.barcode_callers import (
     TenXBarcodeExtractorV2,
-    TenXBarcodeExtractorV3,
-    ReadStats
+    TenXBarcodeExtractorV3
 )
+from barcode_extraction.extraction_result import ReadStats
 from barcode_extraction.universal_extraction import (
     UniversalSingleMoleculeExtractor
 )
 from barcode_extraction.molecule_structure import MoleculeStructure
 
-logger = logging.getLogger('BarcodeGraph')
+logger = logging.getLogger('Badger')
 
 
 @unique

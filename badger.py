@@ -18,7 +18,7 @@ from barcode_graph import BarcodeGraph
 from extract_raw_barcodes import extract_barcodes_in_parallel, extract_barcodes_single_thread, BARCODE_CALLING_MODES
 import stats
 
-logger = logging.getLogger('BarcodeGraph')
+logger = logging.getLogger('Badger')
 
 def parse_args(args):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter)

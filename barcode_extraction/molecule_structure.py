@@ -1,6 +1,8 @@
 from enum import unique, Enum
+import logging
 
-from barcode_extraction.universal_extraction import logger
+
+logger = logging.getLogger('Badger')
 
 
 @unique
@@ -71,6 +73,7 @@ class MoleculeStructure:
     def from_element_list(cls, element_list):
         ms = cls.__new__(cls)
         ms.ordered_elements = element_list
+        return ms
 
     def __iter__(self):
         for e in self.ordered_elements:
