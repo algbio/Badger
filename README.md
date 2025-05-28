@@ -138,6 +138,45 @@ barcodes.py --barcodes barcodes.tsv --reads barcode_file.tsv --barcode_list whit
   -d 10x --output corrected_barcodes --n_cells 5000
 ```
 
+## Molecule description format
+
+Molecule description format allows you to specify custom molecule structure to be parsed.
+Molecule elements (such as primers, adaptors, barcodes, UMIs, etc.) are specified in a single-line separated by column symbol (`:`) without spaces.
+Every element has to have a unique name. Reserved element names are:
+- `PolyT` - for polyT stretch;
+- `cDNA` - for cDNA created from RNA.
+
+In the current format the molecule must have exactly one `cDNA` and at most one `PolyT` element. 
+Barcode detection for protocols sequencing multiple cDNAs from with a single read will be implemented in the future.
+
+Below, you should specify each element, one per line.
+Each line should have 3 tab-separated values: 
+1. Element name;
+2. Element type;
+3. Value.
+
+Element name should be the same as given in the first line.
+Element type defines the value and should be one of the following:
+  - `CONST`: fixed sequence (e.g. a primer), the value contains the sequence;
+  - `VAR_ANY`: any sequence of a fixed length (e.g. UMI), the value is the sequence length;
+  - `VAR_FILE`: variable sequence from a specified file (e.g. barcode), the value is a path to the file, which contains possible sequences, one per line.
+  - `VAR_LIST`: variable sequence from a specified list (e.g. barcode), the value is a comma-separated list of possible sequences.
+
+Example of a molecule description for 10x Genomics 3' v3 protocol:
+```
+R1:Barcode:UMI:PolyT:cDNA:TSO
+R1      CONST   CTACACGACGCTCTTCCGATCT
+Barcode VAR_FILE        barcodes.tsv
+UMI     VAR_ANY 12
+TSO     CONST   CCCATGTACTCTGCGTTGATACCACTGCTT
+
+```
+
+If the molecule structure has the same fixed element more than once, specify it with distinct names using underscore (e.g. `primerA_1` and `primerA_2`).
+If the molecule structure has the same variable element, specify it by adding a number with slash, e.g. `barcode/1` and `barcode/2`.
+If your variable element is split into two or more parts, and you want it to be concatenated after extraction,  use vertical line `barcode|1` and `barcode|2`.
+The value for both elements should be the same, as they will be treated as one.
+
 <a name="sec3.3"></a>
 ## Badger output
 
