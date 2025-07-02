@@ -50,8 +50,8 @@ BARCODE_CALLING_MODES = {BarcodeCallingModes.tenX_v2: TenXBarcodeExtractorV2,
 
 class FileReadHandler:
     def __init__(self, outfile, formatter):
-        self.output_table = outfile
-        self.output_file = open(self.output_table, "w")
+        self.output_file_name = outfile
+        self.output_file = open(self.output_file_name, "w")
         self.formatter = formatter
 
     def add_header(self):
@@ -61,12 +61,30 @@ class FileReadHandler:
         self.output_file.write(self.formatter.format_result(barcode_result) + "\n")
 
     def dump_stats(self, read_stat):
-        stat_out = open(self.output_table + ".stats", "w")
+        stat_out = open(self.output_file_name + ".stats", "w")
         stat_out.write(str(read_stat))
         stat_out.close()
 
     def __del__(self):
         self.output_file.close()
+
+    def merge(self, handlers):
+        stat_dict = defaultdict(int)
+        for h in handlers:
+            shutil.copyfileobj(open(h.output_file, "r"), self.output_file)
+            if not os.path.exists(h.output_file_name + ".stats"):
+                logger.warning("Stats file %s was no found" % h.output_file_name + ".stats")
+                continue
+            for l in open(h.output_file_name + ".stats", "r"):
+                v = l.strip().split("\t")
+                if len(v) != 2:
+                    continue
+                stat_dict[v[0]] += int(v[1])
+
+        out_stats = open(self.output_file_name + ".stats", "w")
+        for k, v in stat_dict.items():
+            logger.info("%s %d" % (k, v))
+            out_stats.write("%s %d\n" % (k, v))
 
 
 class ListReadHandler:
@@ -81,6 +99,29 @@ class ListReadHandler:
 
     def dump_stats(self, read_stat):
         pass
+
+    def merge(self, handlers):
+        for h in handlers:
+            self.read_storage += h.read_storage
+
+
+class HandlerGenerator:
+    def get_handler(self, num):
+        raise NotImplementedError()
+
+
+class ListHandlerGenerator(HandlerGenerator):
+    def get_handler(self, num):
+        return ListReadHandler()
+
+
+class FileHandlerGenerator(HandlerGenerator):
+    def __init__(self, prefix, barcode_detector):
+        self.tmp_file_prefix = prefix
+        self.barcode_detector = barcode_detector
+
+    def get_handler(self, num):
+        return FileReadHandler(self.tmp_file_prefix + "_" + str(num), self.barcode_detector)
 
 
 class BarcodeCaller:
@@ -165,25 +206,10 @@ def bam_file_chunk_reader(handler):
     yield current_chunk
 
 
-def process_chunk(barcode_detector, read_chunk, output_file, num):
-    output_file += "_" + str(num)
-    read_handler = FileReadHandler(output_file, barcode_detector)
+def process_single_thread(input_file, barcode_detector, read_handler):
+    logger.info("Processing " + input_file)
     barcode_caller = BarcodeCaller(barcode_detector, read_handler)
-    barcode_caller.process_chunk(read_chunk)
-    read_handler.dump_stats(barcode_caller.read_stat)
-    return output_file
-
-
-def process_single_thread(args):
-    logger.info("Processing " + args.input)
-    if args.mode == BarcodeCallingModes.custom:
-        molecule_structure = MoleculeStructure(open(args.molecule))
-        barcode_detector = BARCODE_CALLING_MODES[args.mode](molecule_structure)
-    else:
-        barcode_detector = BARCODE_CALLING_MODES[args.mode]()
-    read_handler = FileReadHandler(args.output, barcode_detector)
-    barcode_caller = BarcodeCaller(barcode_detector, read_handler)
-    barcode_caller.process(args.input)
+    barcode_caller.process(input_file)
 
     read_handler.dump_stats(barcode_caller.read_stat)
     for l in str(barcode_caller.read_stat).split("\n"):
@@ -192,7 +218,14 @@ def process_single_thread(args):
     logger.info("Finished barcode calling")
 
 
-def process_in_parallel(args):
+def process_chunk(barcode_detector, read_chunk, read_handler):
+    barcode_caller = BarcodeCaller(barcode_detector, read_handler)
+    barcode_caller.process_chunk(read_chunk)
+    read_handler.dump_stats(barcode_caller.read_stat)
+    return read_handler
+
+
+def process_in_parallel(args, barcode_detector, read_handler_generator, main_read_handler):
     input_file = args.input
     logger.info("Processing " + input_file)
     fname, outer_ext = os.path.splitext(os.path.basename(input_file))
@@ -215,28 +248,14 @@ def process_in_parallel(args):
         logger.error("Unknown file format " + input_file)
         exit(-1)
 
-    tmp_dir = "barcode_calling_%x" % random.randint(0, 1 << 32)
-    while os.path.exists(tmp_dir):
-        tmp_dir = "barcode_calling_%x" % random.randint(0, 1 << 32)
-    if args.tmp_dir:
-        tmp_dir = os.path.join(args.tmp_dir, tmp_dir)
-    os.makedirs(tmp_dir)
-
-    tmp_barcode_file = os.path.join(tmp_dir, "bc")
     count = 0
     future_results = []
-    output_files = []
-
-    if args.mode == BarcodeCallingModes.custom:
-        molecule_structure = MoleculeStructure(open(args.molecule))
-        barcode_detector = BARCODE_CALLING_MODES[args.mode](molecule_structure)
-    else:
-        barcode_detector = BARCODE_CALLING_MODES[args.mode]()
-    logger.info("Barcode caller created")
+    handler_results = []
 
     with ProcessPoolExecutor(max_workers=args.threads) as proc:
         for chunk in read_chunk_gen:
-            future_results.append(proc.submit(process_chunk, barcode_detector, chunk, tmp_barcode_file, count))
+            read_handler = read_handler_generator.get_handler(count)
+            future_results.append(proc.submit(process_chunk, barcode_detector, chunk, read_handler))
             count += 1
             if count >= args.threads:
                 break
@@ -248,11 +267,12 @@ def process_in_parallel(args):
                 if c.exception() is not None:
                     raise c.exception()
                 future_results.remove(c)
-                output_files.append(c.result())
+                handler_results.append(c.result())
                 if reads_left:
                     try:
                         chunk = next(read_chunk_gen)
-                        future_results.append(proc.submit(process_chunk, barcode_detector, chunk, tmp_barcode_file, count))
+                        read_handler = read_handler_generator.get_handler(count)
+                        future_results.append(proc.submit(process_chunk, barcode_detector, chunk, read_handler))
                         count += 1
                     except StopIteration:
                         reads_left = False
@@ -261,27 +281,11 @@ def process_in_parallel(args):
         for c in completed_features:
             if c.exception() is not None:
                 raise c.exception()
-            output_files.append(c.result())
+            handler_results.append(c.result())
 
-    outf = open(args.output, "w")
-    stat_dict = defaultdict(int)
-    for tmp_file in output_files:
-        shutil.copyfileobj(open(tmp_file, "r"), outf)
-        if not os.path.exists(tmp_file + ".stats"):
-            logger.warning("Stats fiel %s was no found" % tmp_file + ".stats")
-            continue
-        for l in open(tmp_file + ".stats", "r"):
-            v = l.strip().split("\t")
-            if len(v) != 2:
-                continue
-            stat_dict[v[0]] += int(v[1])
+    main_read_handler.merge(handler_results)
 
-    out_stats = open(args.output + ".stats", "w")
-    for k, v in stat_dict.items():
-        logger.info("%s %d" % (k, v))
-        out_stats.write("%s %d\n" % (k, v))
-    shutil.rmtree(tmp_dir)
-    logger.info("Finished barcode calling")
+    logger.info("Finished barcode extraction")
 
 
 def extract_barcodes_from_chunk(barcode_detector, read_chunk):
@@ -405,10 +409,30 @@ def main(sys_argv):
                        "Molecule structure file will have not effect, set mode to %s to use it." %
                        (args.mode, args.molecule, BarcodeCallingModes.custom))
 
-    if args.threads == 1:
-        process_single_thread(args)
+
+    if args.mode == BarcodeCallingModes.custom:
+        molecule_structure = MoleculeStructure(open(args.molecule))
+        barcode_detector = BARCODE_CALLING_MODES[args.mode](molecule_structure)
     else:
-        process_in_parallel(args)
+        barcode_detector = BARCODE_CALLING_MODES[args.mode]()
+    logger.info("Barcode caller created")
+
+    if args.threads == 1:
+        read_handler = FileReadHandler(args.output, barcode_detector)
+        process_single_thread(args.input, barcode_detector, read_handler)
+    else:
+        tmp_dir = "barcode_calling_%x" % random.randint(0, 1 << 32)
+        while os.path.exists(tmp_dir):
+            tmp_dir = "barcode_calling_%x" % random.randint(0, 1 << 32)
+        if args.tmp_dir:
+            tmp_dir = os.path.join(args.tmp_dir, tmp_dir)
+        os.makedirs(tmp_dir)
+        tmp_barcode_file = os.path.join(tmp_dir, "bc")
+        handler_generator = FileHandlerGenerator(tmp_barcode_file, barcode_detector)
+
+        main_read_handler = FileReadHandler(args.output, barcode_detector)
+        process_in_parallel(args, barcode_detector, handler_generator, main_read_handler)
+        shutil.rmtree(tmp_dir)
 
 
 if __name__ == "__main__":
