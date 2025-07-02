@@ -16,8 +16,14 @@ from traceback import print_exc
 
 from barcode_extraction.molecule_structure import MoleculeStructure
 from barcode_graph import BarcodeGraph
-from extract_raw_barcodes import extract_barcodes_in_parallel, extract_barcodes_single_thread, BARCODE_CALLING_MODES, \
+from extract_raw_barcodes import (
+    process_in_parallel,
+    process_single_thread,
+    ListReadHandler,
+    ListHandlerGenerator,
+    BARCODE_CALLING_MODES,
     BarcodeCallingModes
+)
 import stats
 from support import load_true_barcodes, load_extracted_barcodes
 
@@ -83,11 +89,23 @@ def main(args):
         barcode_detector = BARCODE_CALLING_MODES[args.mode]()
     logger.info("Barcode caller created")
 
+    if args.input.endswith("tsv"):
+        # FIXME
+        read_assignment = load_extracted_barcodes(args.input)
+        logger.info("Imported barcodes from file")
+    else:
+        main_read_handler = ListReadHandler()
+        if args.threads == 1:
+            process_single_thread(args.input, barcode_detector, main_read_handler)
+        else:
+            handler_generator = ListHandlerGenerator()
+            process_in_parallel(args, barcode_detector, handler_generator, main_read_handler)
+        read_assignment = main_read_handler.read_storage
+    # FIXME
+    barcodes = list(filter(lambda x: x != "*", (ra[1] for ra in read_assignment)))
+
 
 def detect_barcodes_simple(mode, args):
-    barcode_detector = BARCODE_CALLING_MODES[mode]()
-    logger.info("Barcode caller created")
-
     true_barcodes = load_true_barcodes(args.true_barcodes)
 
     if args.barcode_list:
@@ -99,16 +117,6 @@ def detect_barcodes_simple(mode, args):
         barcode_list = None
     
     out = args.output
-    if args.input.endswith("tsv"):
-        # FIXME
-        read_assignment = load_extracted_barcodes(args.input)
-        logger.info("Imported barcodes from file")
-    else:
-        if args.threads == 1:
-            read_assignment = extract_barcodes_single_thread(args.input, args.data_type)
-        else:
-            read_assignment = extract_barcodes_in_parallel(args, args.data_type, args.threads)
-        barcodes = list(filter(lambda x: x != "*", (ra[1] for ra in read_assignment)))
 
     bc_len = 0
     if args.data_type.startswith("tenX"):

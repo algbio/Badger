@@ -213,10 +213,7 @@ class BarcodeGraph:
             self.index_bc_in_parallel(barcodes, bc_len, threads)
             
             self.compare_in_parallel(bc_len, threads)
-            
-            
-            
-  
+
         else: 
             
             self.index_bc_single_thread(barcodes, bc_len)

@@ -48,11 +48,34 @@ BARCODE_CALLING_MODES = {BarcodeCallingModes.tenX_v2: TenXBarcodeExtractorV2,
                          BarcodeCallingModes.custom: UniversalSingleMoleculeExtractor}
 
 
-class FileReadHandler:
+class ReadHandler:
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def add_read(self, barcode_result):
+        pass
+
+    def add_header(self):
+        pass
+
+    def merge(self, handlers):
+        pass
+
+    def dump_stats(self, read_stat):
+        pass
+
+
+class FileReadHandler(ReadHandler):
     def __init__(self, outfile, formatter):
         self.output_file_name = outfile
-        self.output_file = open(self.output_file_name, "w")
         self.formatter = formatter
+        self.output_file = None
+
+    def start(self):
+        self.output_file = open(self.output_file_name, "w")
 
     def add_header(self):
         self.output_file.write(self.formatter.header() + "\n")
@@ -65,13 +88,20 @@ class FileReadHandler:
         stat_out.write(str(read_stat))
         stat_out.close()
 
+    def stop(self):
+        if self.output_file:
+            if not self.output_file.closed:
+                self.output_file.close()
+            self.output_file = None
+
     def __del__(self):
-        self.output_file.close()
+        if self.output_file and not self.output_file.closed:
+            self.output_file.close()
 
     def merge(self, handlers):
         stat_dict = defaultdict(int)
         for h in handlers:
-            shutil.copyfileobj(open(h.output_file, "r"), self.output_file)
+            shutil.copyfileobj(open(h.output_file_name, "r"), self.output_file)
             if not os.path.exists(h.output_file_name + ".stats"):
                 logger.warning("Stats file %s was no found" % h.output_file_name + ".stats")
                 continue
@@ -87,18 +117,12 @@ class FileReadHandler:
             out_stats.write("%s %d\n" % (k, v))
 
 
-class ListReadHandler:
+class ListReadHandler(ReadHandler):
     def __init__(self):
         self.read_storage = []
 
-    def add_header(self, header):
-        pass
-
     def add_read(self, barcode_result):
         self.read_storage.append((barcode_result.read_id, barcode_result.barcode, barcode_result.UMI))
-
-    def dump_stats(self, read_stat):
-        pass
 
     def merge(self, handlers):
         for h in handlers:
@@ -219,9 +243,11 @@ def process_single_thread(input_file, barcode_detector, read_handler):
 
 
 def process_chunk(barcode_detector, read_chunk, read_handler):
+    read_handler.start()
     barcode_caller = BarcodeCaller(barcode_detector, read_handler)
     barcode_caller.process_chunk(read_chunk)
     read_handler.dump_stats(barcode_caller.read_stat)
+    read_handler.stop()
     return read_handler
 
 
@@ -283,87 +309,11 @@ def process_in_parallel(args, barcode_detector, read_handler_generator, main_rea
                 raise c.exception()
             handler_results.append(c.result())
 
+    main_read_handler.start()
     main_read_handler.merge(handler_results)
+    main_read_handler.stop()
 
     logger.info("Finished barcode extraction")
-
-
-def extract_barcodes_from_chunk(barcode_detector, read_chunk):
-    read_handler = ListReadHandler()
-    barcode_caller = BarcodeCaller(barcode_detector, read_handler)
-    barcode_caller.process_chunk(read_chunk)
-    return read_handler.read_storage
-
-
-def extract_barcodes_single_thread(input_file, mode):
-    logger.info("Extracting from " + input_file)
-    barcode_detector = BARCODE_CALLING_MODES[mode]()
-    read_handler = ListReadHandler()
-    barcode_caller = BarcodeCaller(barcode_detector, read_handler)
-    barcode_caller.process(input_file)
-    logger.info("Finished barcode extraction")
-    return read_handler.read_storage
-
-
-def extract_barcodes_in_parallel(input_file, mode, threads):
-    logger.info("Extracting from " + input_file)
-    fname, outer_ext = os.path.splitext(os.path.basename(input_file))
-    low_ext = outer_ext.lower()
-
-    handle = input_file
-    if low_ext in ['.gz', '.gzip']:
-        handle = gzip.open(input_file, "rt")
-        input_file = fname
-        fname, outer_ext = os.path.splitext(os.path.basename(input_file))
-        low_ext = outer_ext.lower()
-
-    if low_ext in ['.fq', '.fastq']:
-        read_chunk_gen = fastx_file_chunk_reader(SeqIO.parse(handle, "fastq"))
-    elif low_ext in ['.fa', '.fasta']:
-        read_chunk_gen = fastx_file_chunk_reader(SeqIO.parse(handle, "fasta"))
-    elif low_ext in ['.bam', '.sam']:
-        read_chunk_gen = bam_file_chunk_reader(pysam.AlignmentFile(input_file, "rb"))
-    else:
-        logger.error("Unknown file format " + input_file)
-        exit(-1)
-
-    count = 0
-    future_results = []
-    barcode_detector = BARCODE_CALLING_MODES[mode]()
-    barcoded_reads = []
-    logger.info("Barcode caller created")
-
-    with ProcessPoolExecutor(max_workers=threads) as proc:
-        for chunk in read_chunk_gen:
-            future_results.append(proc.submit(extract_barcodes_from_chunk, barcode_detector, chunk))
-            count += 1
-            if count >= threads:
-                break
-
-        reads_left = True
-        while reads_left:
-            completed_features, _ = concurrent.futures.wait(future_results, return_when=concurrent.futures.FIRST_COMPLETED)
-            for c in completed_features:
-                if c.exception() is not None:
-                    raise c.exception()
-                future_results.remove(c)
-                barcoded_reads += c.result()
-                if reads_left:
-                    try:
-                        chunk = next(read_chunk_gen)
-                        future_results.append(proc.submit(extract_barcodes_from_chunk, barcode_detector, chunk))
-                        count += 1
-                    except StopIteration:
-                        reads_left = False
-
-        completed_features, _ = concurrent.futures.wait(future_results, return_when=concurrent.futures.ALL_COMPLETED)
-        for c in completed_features:
-            if c.exception() is not None:
-                raise c.exception()
-            barcoded_reads += c.result()
-
-    logger.info("Finished barcode extraction")
-    return barcoded_reads
 
 
 def load_barcodes(inf):
@@ -408,7 +358,6 @@ def main(sys_argv):
         logger.warning("You set %s mode, but also provided a molecule structure file %s. "
                        "Molecule structure file will have not effect, set mode to %s to use it." %
                        (args.mode, args.molecule, BarcodeCallingModes.custom))
-
 
     if args.mode == BarcodeCallingModes.custom:
         molecule_structure = MoleculeStructure(open(args.molecule))
