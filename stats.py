@@ -6,26 +6,18 @@
 # See file LICENSE for details.
 ############################################################################
 
-import math
-import numpy as np
 import editdistance
 import networkx as nx
 import matplotlib.pyplot as plt
-import igraph as ig
-from collections import defaultdict
 import pandas as pd
 import logging
-import edlib
-import itertools
-from Levenshtein import distance
-from concurrent.futures import ProcessPoolExecutor
-
-from index import QGramIndex
-from common import get_score, dfs, dfs_without_recursion, rank, unrank
+from common import dfs_without_recursion, rank, unrank
 
 logger = logging.getLogger("BarcodeGraph")
 
+
 def visualize_graph(graph):
+    import igraph as ig
     edges = []
     for edge in graph.dists.keys():
         edges.append([edge[0], edge[1]])
@@ -37,7 +29,8 @@ def visualize_graph(graph):
     g.delete_vertices(unconnected) 
     layout = g.layout("fr")
     ig.plot(g, target = 'graph_dist_2.pdf', vertex_size = 1, layout = layout, edge_color = ['red', 'black'])
-    
+
+
 def graph_statistics(graph, true_barcodes, bc_len):
     components = []
     singletons = []

@@ -1,4 +1,6 @@
 import pandas as pd
+from barcode_extraction.extraction_result import ExtractionResult, DetectedElement
+from collections import defaultdict
 
 
 def load_true_barcodes(inf):
@@ -14,22 +16,25 @@ def load_true_barcodes(inf):
 
 
 def load_extracted_barcodes(in_tsv):
-    reads = pd.read_csv(in_tsv, sep="\t")
-    ids = reads["#read_id"].tolist()
-    observed = reads["barcode"]
-    observed = observed.fillna('*')
-    observed = observed.tolist()
-    read_assignment = []
-    barcodes = reads["barcode"]
-    barcodes = barcodes.dropna()
-    barcodes = barcodes[barcodes != "*"]
-    barcodes = barcodes[barcodes != "barcode"]
-    barcodes = barcodes.tolist()
-    for i in range(len(ids)):
-        if ids[i] != "#read_id":
-            di = ids[i]
-            o = observed[i]
-            if o != "barcode":
-                if len(o) == bc_len + 1:
-                    o = o[:-1]
-                read_assignment.append((di, o))
+    reads = pd.read_csv(in_tsv, sep="\t", header=True)
+    elements = defaultdict(list)
+    for c in reads.columns:
+        v = c.split('_')
+        element_name = v[0]
+        property_name = v[1]
+        elements[element_name].append(property_name)
+
+    read_assignments = []
+    for r in reads:
+        # if r["Barcode_sequence"] == '*':
+        #    continue
+        er = ExtractionResult(r["#read_id"], r["strand"], {})
+        for e in elements.keys():
+            de = DetectedElement(r[e + "_start"], r[e + "_end"])
+            if e + "_sequence" in r:
+                de.seq = r[e + "_sequence"]
+            if e + "_score" in r:
+                de.seq = r[e + "_score"]
+            er.detected_results[e] = de
+        read_assignments.append(er)
+    return read_assignments

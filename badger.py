@@ -24,7 +24,6 @@ from extract_raw_barcodes import (
     BARCODE_CALLING_MODES,
     BarcodeCallingModes
 )
-import stats
 from support import load_true_barcodes, load_extracted_barcodes
 
 logger = logging.getLogger('Badger')
@@ -32,30 +31,38 @@ logger = logging.getLogger('Badger')
 
 def parse_args(args):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter)
-    #parser.add_argument("--barcodes", "-b", help="tsv file containing the observed cell barcodes", ##this at some point I can just get from the barcode extraction output directly, but do that after thesis
-    #                    type = str, dest = "bar_file", required = True)
-    parser.add_argument("--threshold", "-t", help = "Maximal accepted difference between barcodes",
-                        type = int, dest = "threshold", default = 1) 
-    parser.add_argument("--input", "-i", help = "reads in FASTQ/FASTA (can be gzipped), BAM or TSV from barcode extraction",
+    parser.add_argument("--input", "-i", help = "reads in FASTQ/FASTA (can be gzipped), BAM "
+                                                "or TSV from barcode extraction",
                         type = str, dest = "input", required = True)
-    parser.add_argument("--ground_truth", help = "File connecting each observed barcode to its read ID containing true barcode, only used for statistics",
-                        type = str, default = None)
-    parser.add_argument("--barcode_list", "-l", help = "List of all possible barcodes for the used method, helps identify correct barcodes",
-                        type = str, dest = "barcode_list", default = None)
-    parser.add_argument("--mode", type=str, help="mode to be used",
+    parser.add_argument("--data_type", "-d", type=str, help="protocol used",
                         choices=[x.name for x in BarcodeCallingModes],
                         required=True)
-    parser.add_argument("--molecule", type=str, help="file with molecule description format")
-    parser.add_argument("--true_barcodes", help = "List of all true barcodes of the input data, for example obtained from short read data",
-                        type = str, default = None)
-    parser.add_argument("--n_cells", "-c", help = "expected number of cell associated barcodes",
-                        type = int, default = 5000)
+    parser.add_argument("--molecule", type=str, help="file with molecule description format"
+                                                     "(effective only when data type is set to custom)")
+
+    parser.add_argument("--barcode_list", "-l",
+                        help="List of all possible barcodes for the used method, helps identify correct barcodes",
+                        type=str, dest="barcode_list", default=None)
+    parser.add_argument("--true_barcodes",
+                        help="List of all true barcodes of the input data, for example obtained from short read data",
+                        type=str, default=None)
+    parser.add_argument("--n_cells", "-c", help="expected number of cell associated barcodes",
+                        type=int, default=5000)
     parser.add_argument("--output", "-o", help = "File prefix for output files",
-                        type = str, default = "OUT")
-    parser.add_argument("--interval", "-i", help = "Percentage by which the number of cells is allowed to differ from estimated cell number, default 25%", default = 25, type = int)
-    parser.add_argument("--stats", "-s", action='store_true', help = "if set, true barcode statistics are run instead of barcode calling.", default = False)
-    parser.add_argument("--threads", "-tr", dest = "threads", default = 1, type = int)
-    parser.add_argument("--high_sens", "-hs", action='store_true', help = "if set, Badger is run in high sensitivity mode. This increases recall but decreases precision", default = False)
+                        type = str)
+
+    parser.add_argument("--threshold", help = "Maximal accepted difference between barcodes",
+                        type = int, dest = "threshold", default = 1)
+    parser.add_argument("--ground_truth", help = "File connecting each observed barcode to its read ID containing true barcode, only used for statistics",
+                        type = str, default = None)
+
+    parser.add_argument("--cell_count_variance",
+                        help="Percentage by which the number of cells is allowed to differ from estimated cell number, default 25%%",
+                        default=25, type=int)
+    parser.add_argument("--stats", action='store_true', help = "if set, true barcode statistics are run instead of barcode calling.", default = False)
+    parser.add_argument("--threads", "-t", dest = "threads", default = 1, type = int)
+    parser.add_argument("--high_sens", action='store_true',
+                        help = "if set, Badger is run in high sensitivity mode. This increases recall but decreases precision", default = False)
     return parser.parse_args(args)
 
 
@@ -76,22 +83,21 @@ def main(args):
     args = parse_args(args)
     set_logger(logger)
 
-    args.mode = BarcodeCallingModes[args.mode]
-    if args.mode != BarcodeCallingModes.custom and args.molecule:
+    args.data_type = BarcodeCallingModes[args.data_type]
+    if args.data_type != BarcodeCallingModes.custom and args.molecule:
         logger.warning("You set %s mode, but also provided a molecule structure file %s. "
                        "Molecule structure file will have not effect, set mode to %s to use it." %
-                       (args.mode, args.molecule, BarcodeCallingModes.custom))
+                       (args.data_type, args.molecule, BarcodeCallingModes.custom))
 
-    if args.mode == BarcodeCallingModes.custom:
+    if args.data_type == BarcodeCallingModes.custom:
         molecule_structure = MoleculeStructure(open(args.molecule))
-        barcode_detector = BARCODE_CALLING_MODES[args.mode](molecule_structure)
+        barcode_detector = BARCODE_CALLING_MODES[args.data_type](molecule_structure)
     else:
-        barcode_detector = BARCODE_CALLING_MODES[args.mode]()
+        barcode_detector = BARCODE_CALLING_MODES[args.data_type]()
     logger.info("Barcode caller created")
 
     if args.input.endswith("tsv"):
-        # FIXME
-        read_assignment = load_extracted_barcodes(args.input)
+        read_assignments = load_extracted_barcodes(args.input)
         logger.info("Imported barcodes from file")
     else:
         main_read_handler = ListReadHandler()
@@ -100,12 +106,13 @@ def main(args):
         else:
             handler_generator = ListHandlerGenerator()
             process_in_parallel(args, barcode_detector, handler_generator, main_read_handler)
-        read_assignment = main_read_handler.read_storage
-    # FIXME
-    barcodes = list(filter(lambda x: x != "*", (ra[1] for ra in read_assignment)))
+        read_assignments = main_read_handler.read_storage
+
+    if args.data_type != BarcodeCallingModes.custom:
+        detect_barcodes_simple(args, read_assignments, barcode_detector)
 
 
-def detect_barcodes_simple(mode, args):
+def detect_barcodes_simple(args, read_assignments, barcode_detector):
     true_barcodes = load_true_barcodes(args.true_barcodes)
 
     if args.barcode_list:
@@ -115,36 +122,29 @@ def detect_barcodes_simple(mode, args):
         list_file.close()
     else:
         barcode_list = None
-    
-    out = args.output
 
-    bc_len = 0
-    if args.data_type.startswith("tenX"):
-        bc_len = 16
-    elif args.data_type == "Double":
-        bc_len = 20
-    else:
-        logger.error("Please specify the type of single cell data used. Options are tenX_v2, tenX_v3 and Double.")
-        exit(-3)
+    extracted_barcodes = list(filter(lambda x: x != '*', [x.detected_results["barcode"].seq if "barcode" in x.detected_results else '*' for x in read_assignments]))
 
     logger.info("Initializing Graph")
+    bc_len = barcode_detector.barcode_length
     graph = BarcodeGraph(args.threshold)
-    graph.graph_construction(barcodes, bc_len, args.threads)
+    graph.graph_construction(extracted_barcodes, bc_len, args.threads)
     logger.info("Graph construction done")
-    
+
+    out = args.output
     if not args.stats:
-        graph.cluster(true_barcodes, barcode_list, args.n_cells, bc_len, args.interval)
+        graph.cluster(true_barcodes, barcode_list, args.n_cells, bc_len, args.cell_count_variance)
         logger.info("Clustering done")
-        
-        
-        graph.output_file(read_assignment, out, true_barcodes, bc_len, args.high_sens)
+
+        graph.output_file(read_assignments, out, barcode_detector, args.high_sens)
     
-    disconnected = len(graph.counts.keys()) - len(graph.edges.keys())
-    print(disconnected)
+    #disconnected = len(graph.counts.keys()) - len(graph.edges.keys())
+    #print(disconnected)
             
     if args.stats:
+        import stats
         logger.info("Statistics being calculated")
-        tbcs = graph.get_cluster_centers(None, bc_len, barcode_list, args.n_cells, args.interval)
+        tbcs = graph.get_cluster_centers(None, bc_len, barcode_list, args.n_cells, args.cell_count_variance)
         stats.evaluate_centers(graph, tbcs, true_barcodes, barcode_list, bc_len)
         #stats.graph_statistics(graph, true_barcodes)
         #stats.choose_true(graph, true_barcodes, barcode_list, args.n_cells)
@@ -152,8 +152,7 @@ def detect_barcodes_simple(mode, args):
         stats.true_barcode_stats(graph, true_barcodes, bc_len)
         #stats.large_component(graph, true_barcodes)
         #stats.print_components(graph, true_barcodes)
-    
-    
+
     if args.ground_truth is not None:
         truth = pd.read_csv(args.ground_truth, sep = "\t", header = None)
         #print(reads.iloc[:,0])

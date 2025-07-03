@@ -6,10 +6,7 @@
 # See file LICENSE for details.
 ############################################################################
 
-import math
-import numpy as np
 import editdistance
-import matplotlib.pyplot as plt
 from collections import defaultdict
 import pandas as pd
 import logging
@@ -18,7 +15,7 @@ from concurrent.futures import ProcessPoolExecutor
 from statistics import median, mean
 
 from index import QGramIndex
-from common import get_score, dfs, dfs_without_recursion, rank, unrank
+from common import dfs_without_recursion, rank, unrank
 
 logger = logging.getLogger("BarcodeGraph")
 
@@ -283,7 +280,7 @@ class BarcodeGraph:
             self.clustered[tbc] = True
             
         for i in range(1,3):
-            print(i)
+            #print(i)
             for center in self.clusters.keys():
                 for n in range(len(self.clusters[center])):
                     node = self.clusters[center][n]
@@ -326,7 +323,6 @@ class BarcodeGraph:
         return observed_assignments
                 
     def isoquant_output(self, read_assignment, true_barcodes):
-        
         components = []
         visited = [False for node in self.barcodes.keys()]
         for node in self.barcodes.keys():
@@ -334,7 +330,7 @@ class BarcodeGraph:
                 component, visited = dfs_without_recursion(visited, node, [], self.edges)
                 components.append(component)
                 
-        print(len(read_assignment))
+        #print(len(read_assignment))
         
         assignments = self.assign_by_cluster()
         read_ids = []
@@ -342,7 +338,6 @@ class BarcodeGraph:
         real = []
         
         for read in read_assignment:
-            
             observed_bc = read[2]
             if observed_bc != "*":  
                 assigned_bc = assignments[observed_bc]
@@ -354,9 +349,9 @@ class BarcodeGraph:
                     if real_bc != assigned_bc:
                         print("test")
             
-        print(len(read_ids))
-        print(len(real))
-        print(len(results))
+        #print(len(read_ids))
+        #print(len(real))
+        #print(len(results))
         correct = pd.DataFrame({"readID": read_ids,
                                 "barcode": real})
         correct.to_csv('Human_R9_V5.3_tt_read_groups_tbcs.tsv', sep = '\t', index = False)
@@ -380,29 +375,23 @@ class BarcodeGraph:
                 if min_dist < 3:
                     assignments[bc] = min_bc
         return assignments
-            
-                
-    def output_file(self, read_assignment, out, true_barcodes, bc_len, post):
-        
+
+    def output_file(self, read_assignments, out_file, barcode_detector, post):
+        bc_len = barcode_detector.barcode_length
         assignments = self.assign_by_cluster(bc_len)
-        read_ids = []
-        results = []
         if post:
             assignments = self.postprocessing(assignments, bc_len)
-        for read in read_assignment:
-            observed_bc = read[1]
-            assigned_bc = "*"
-            if observed_bc != "*":
-                assigned_bc = assignments[observed_bc]
-                if assigned_bc == "":
-                    assigned_bc = "*"
-                    
-            read_ids.append(read[0])
-            results.append(assigned_bc)
-        
-        out_file = out + "_output_file.tsv"
 
-        res = pd.DataFrame({"readID": read_ids,
-                            "barcode": results})
-        res.to_csv(out_file, sep = '\t', index = False)
+        with open(out_file, "w") as outf:
+            outf.write(barcode_detector.header() + "\n")
+            for read in read_assignments:
+                observed_bc = read.detected_results["Barcode"].seq
+                assigned_bc = "*"
+                if observed_bc != "*":
+                    assigned_bc = assignments[observed_bc]
+                    if assigned_bc == "":
+                        assigned_bc = "*"
+                read.detected_results["Barcode"].seq = assigned_bc
+                outf.write(barcode_detector.format_result(read) + "\n")
+
 

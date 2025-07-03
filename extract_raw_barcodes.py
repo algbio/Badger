@@ -122,7 +122,7 @@ class ListReadHandler(ReadHandler):
         self.read_storage = []
 
     def add_read(self, barcode_result):
-        self.read_storage.append((barcode_result.read_id, barcode_result.barcode, barcode_result.UMI))
+        self.read_storage.append(barcode_result)
 
     def merge(self, handlers):
         for h in handlers:
@@ -231,7 +231,7 @@ def bam_file_chunk_reader(handler):
 
 
 def process_single_thread(input_file, barcode_detector, read_handler):
-    logger.info("Processing " + input_file)
+    read_handler.start()
     barcode_caller = BarcodeCaller(barcode_detector, read_handler)
     barcode_caller.process(input_file)
 
@@ -239,7 +239,7 @@ def process_single_thread(input_file, barcode_detector, read_handler):
     for l in str(barcode_caller.read_stat).split("\n"):
         if l:
             logger.info(l)
-    logger.info("Finished barcode calling")
+    read_handler.stop()
 
 
 def process_chunk(barcode_detector, read_chunk, read_handler):

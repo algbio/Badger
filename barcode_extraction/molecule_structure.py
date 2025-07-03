@@ -88,5 +88,5 @@ class MoleculeStructure:
             elif el.element_type == ElementType.CONST:
                 header += "\t%s_start\t%s_end\t%s_score" % (el.element_name, el.element_name, el.element_name)
             else:
-                header += "\t%s_start\t%s_end\t%s_seqeunce" % (el.element_name, el.element_name, el.element_name)
+                header += "\t%s_start\t%s_end\t%s_sequence" % (el.element_name, el.element_name, el.element_name)
         return header

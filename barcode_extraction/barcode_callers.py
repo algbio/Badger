@@ -43,6 +43,7 @@ class TenXBarcodeExtractor:
     def __init__(self, protocol_version=TenXVersions.v3):
         self.r1_indexer = KmerIndexer([TenXBarcodeExtractor.R1], kmer_size=6)
         self.UMI_LEN_10X = self.UMI_LENGTHS[protocol_version]
+        self.barcode_length = self.BARCODE_LEN_10X
         self.molecule_structure = (
             MoleculeStructure.from_element_list([MoleculeElement(TenXMoleculeElements.r1.name, ElementType.CONST),
                                                  MoleculeElement(TenXMoleculeElements.barcode.name, ElementType.VAR_ANY, self.BARCODE_LEN_10X),
