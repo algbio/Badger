@@ -18,13 +18,12 @@ class QGramIndex:
     
     def __init__(self, threshold, bc_len, q = 2):
         self.q = q
-        print("k:", self.q)
+        # print("k:", self.q)
         self.threshold = bc_len - q + 1 - q*threshold
         if self.threshold <= 0:
             self.threshold = 4
         self.index = []
         self.list_of_q_grams() 
-        
 
     def add_to_index(self, barcode, number):
         kmer = self.rank(barcode[:self.q])
@@ -34,7 +33,6 @@ class QGramIndex:
             self.index[kmer][number] += 1
         return
         
-    
     def list_of_q_grams(self):
         for i in range(0, pow(4,self.q)):
             self.index.append(defaultdict(int))

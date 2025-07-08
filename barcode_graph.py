@@ -264,7 +264,7 @@ class BarcodeGraph:
                 tbcs.append(bc_by_counts[i])
                 i += 1
                 n += 1
-        while n < n_cells - n_cells*interval*0.01:
+        while n < n_cells - n_cells*interval*0.01 and i < len(bc_by_counts):
             tbcs.append(bc_by_counts[i])
             i += 1
             n += 1
@@ -385,13 +385,16 @@ class BarcodeGraph:
         with open(out_file, "w") as outf:
             outf.write(barcode_detector.header() + "\n")
             for read in read_assignments:
-                observed_bc = read.detected_results["Barcode"].seq
+                if "barcode" not in read.detected_results:
+                    outf.write(barcode_detector.format_result(read) + "\n")
+                    continue
+                observed_bc = read.detected_results["barcode"].seq
                 assigned_bc = "*"
                 if observed_bc != "*":
                     assigned_bc = assignments[observed_bc]
                     if assigned_bc == "":
                         assigned_bc = "*"
-                read.detected_results["Barcode"].seq = assigned_bc
+                read.detected_results["barcode"].seq = assigned_bc
                 outf.write(barcode_detector.format_result(read) + "\n")
 
 
