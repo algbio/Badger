@@ -241,11 +241,11 @@ class BarcodeGraph:
                                 self.edges[seq_rank].append(bc_rank)
                                 self.dists[(bc_rank, seq_rank)] = dist
                                 self.dists[(seq_rank, bc_rank)] = dist 
-                            
         
     def get_cluster_centers(self, true_barcodes, bc_len, barcode_list, n_cells, interval):
         sorted_counts = dict(sorted(self.counts.items(), key=lambda item: item[1],reverse = True))
         bc_by_counts = list(sorted_counts.keys())
+        # TODO: think once more about cutoff estimation
         cutoff = mean(list(self.counts.values())[:(n_cells)])
         cutoff = max(cutoff/5.0, 5)
         tbcs = []
@@ -376,7 +376,7 @@ class BarcodeGraph:
                     assignments[bc] = min_bc
         return assignments
 
-    def output_file(self, read_assignments, out_file, barcode_detector, post):
+    def output_file(self, read_assignments, out_file, barcode_detector, post, element_keyword="barcode"):
         bc_len = barcode_detector.barcode_length
         assignments = self.assign_by_cluster(bc_len)
         if post:
@@ -385,16 +385,16 @@ class BarcodeGraph:
         with open(out_file, "w") as outf:
             outf.write(barcode_detector.header() + "\n")
             for read in read_assignments:
-                if "barcode" not in read.detected_results:
+                if element_keyword not in read.detected_results:
                     outf.write(barcode_detector.format_result(read) + "\n")
                     continue
-                observed_bc = read.detected_results["barcode"].seq
+                observed_bc = read.detected_results[element_keyword].seq
                 assigned_bc = "*"
                 if observed_bc != "*":
                     assigned_bc = assignments[observed_bc]
                     if assigned_bc == "":
                         assigned_bc = "*"
-                read.detected_results["barcode"].seq = assigned_bc
+                read.detected_results[element_keyword].seq = assigned_bc
                 outf.write(barcode_detector.format_result(read) + "\n")
 
 

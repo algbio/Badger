@@ -14,7 +14,7 @@ from collections import defaultdict
 from io import StringIO
 from traceback import print_exc
 
-from barcode_extraction.molecule_structure import MoleculeStructure
+from barcode_extraction.molecule_structure import MoleculeStructure, ElementType
 from barcode_graph import BarcodeGraph
 from extract_raw_barcodes import (
     process_in_parallel,
@@ -89,6 +89,7 @@ def main(args):
                        "Molecule structure file will have not effect, set mode to %s to use it." %
                        (args.data_type, args.molecule, BarcodeCallingModes.custom))
 
+    molecule_structure = None
     if args.data_type == BarcodeCallingModes.custom:
         molecule_structure = MoleculeStructure(open(args.molecule))
         barcode_detector = BARCODE_CALLING_MODES[args.data_type](molecule_structure)
@@ -110,9 +111,15 @@ def main(args):
 
     if args.data_type != BarcodeCallingModes.custom:
         detect_barcodes_simple(args, read_assignments, barcode_detector)
+    elif molecule_structure is not None:
+        for element in molecule_structure:
+            if element.element_type == ElementType.VAR_FILE:
+                detect_barcodes_simple(args, read_assignments, barcode_detector, element.element_name)
+            elif element.element_type == ElementType.VAR_LIST:
+                detect_barcodes_simple(args, read_assignments, barcode_detector, element.element_name)
 
 
-def detect_barcodes_simple(args, read_assignments, barcode_detector):
+def detect_barcodes_simple(args, read_assignments, barcode_detector, element_keyword="barcode"):
     true_barcodes = load_true_barcodes(args.true_barcodes)
 
     if args.barcode_list:
@@ -123,7 +130,10 @@ def detect_barcodes_simple(args, read_assignments, barcode_detector):
     else:
         barcode_list = None
 
-    extracted_barcodes = list(filter(lambda x: x != '*', [x.detected_results["barcode"].seq if "barcode" in x.detected_results else '*' for x in read_assignments]))
+    extracted_barcodes = list(filter(lambda x: x != '*',
+                                     [x.detected_results[element_keyword].seq
+                                      if element_keyword in x.detected_results
+                                      else '*' for x in read_assignments]))
 
     logger.info("Initializing Graph")
     bc_len = barcode_detector.barcode_length
@@ -136,7 +146,7 @@ def detect_barcodes_simple(args, read_assignments, barcode_detector):
         graph.cluster(true_barcodes, barcode_list, args.n_cells, bc_len, args.cell_count_variance)
         logger.info("Clustering done")
 
-        graph.output_file(read_assignments, out, barcode_detector, args.high_sens)
+        graph.output_file(read_assignments, out, barcode_detector, args.high_sens, element_keyword)
     
     #disconnected = len(graph.counts.keys()) - len(graph.edges.keys())
     #print(disconnected)
